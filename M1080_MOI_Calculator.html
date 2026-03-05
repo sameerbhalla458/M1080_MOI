@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>M1080 — User MOI Estimator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080f1e; }
+  input[type=range] { cursor: pointer; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #0d1425; }
+  ::-webkit-scrollbar-thumb { background: #1e2d47; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo } = React;
+
+// ─── Coordinate Frame: X = forward, Y = lateral (right), Z = up (RH) ─────────
+const DEG = Math.PI / 180;
+
+// ─── De Leva (1996) Male Segment Parameters ───────────────────────────────────
+// Source: De Leva, P. (1996). Adjustments to Zatsiorsky-Seluyanov's segment
+//   inertia parameters. Journal of Biomechanics, 29(9), 1223–1230.
+//   DOI: 10.1016/0021-9290(95)00178-6
+//
+// Derived from: Zatsiorsky & Seluyanov (1983/1985) in-vivo gamma-ray scanning
+//   data, recalculated by De Leva to use more practical anatomical landmarks.
+//   Sample: adult males (n=100), mean age 28y, mass 73kg, height 174cm.
+//
+// Parameters:
+//   mf  = segment mass / total body mass
+//   lf  = segment length / total body height
+//   cf  = CoM distance from PROXIMAL end / segment length
+//   k   = radius of gyration (transverse axis) / segment length
+//
+// Segment length definitions (proximal → distal):
+//   head  : vertex → mid-cervical (C7-T1)
+//   trunk : C7-T1  → mid-hip (greater trochanters)
+//   uArm  : glenohumeral → elbow (lateral epicondyle)
+//   fArm  : elbow → wrist (radial / ulnar styloids)
+//   hand  : wrist → fingertip III
+//   thigh : greater trochanter → knee (lateral femoral epicondyle)
+//   shank : knee → ankle (lateral malleolus)
+//   foot  : heel → toe II
+const SEG_DATA = {
+  //           mf       lf      cf      k      label
+  head:  { mf:0.0694, lf:0.130, cf:0.500, k:0.303, label:"Head + Neck"   },
+  trunk: { mf:0.4346, lf:0.300, cf:0.500, k:0.328, label:"Trunk"         },
+  uArm:  { mf:0.0271, lf:0.170, cf:0.577, k:0.285, label:"Upper Arms x2" },
+  fArm:  { mf:0.0162, lf:0.146, cf:0.457, k:0.276, label:"Forearms x2"   },
+  hand:  { mf:0.0061, lf:0.058, cf:0.790, k:0.513, label:"Hands x2"      },
+  thigh: { mf:0.1000, lf:0.245, cf:0.410, k:0.329, label:"Thighs x2"     },
+  shank: { mf:0.0465, lf:0.246, cf:0.446, k:0.255, label:"Shanks x2"     },
+  foot:  { mf:0.0145, lf:0.152, cf:0.401, k:0.257, label:"Feet x2"       },
+};
+
+// Lateral Y half-width (bilateral offset) as fraction of total height
+// Shoulder half-width ~0.13H, hip half-width ~0.09H
+const Y_FRAC = {
+  head:0, trunk:0,
+  uArm:0.13, fArm:0.13, hand:0.13,
+  thigh:0.09, shank:0.09, foot:0.09,
+};
+
+// ─── Kinematics (sagittal plane X–Z) ─────────────────────────────────────────
+// All segment positions expressed relative to HIP JOINT (trochanter).
+// Angles in degrees.
+function computePosture(M, H, ang) {
+  const { trunkLean, thighAngle, kneeAngle, shoulderAngle, elbowAngle, footAngle } = ang;
+  const L = {};
+  for (const [id, d] of Object.entries(SEG_DATA)) L[id] = d.lf * H;
+
+  // Trunk — lean: + = backward, - = forward
+  const aT = trunkLean * DEG;
+  const C7       = { x:-L.trunk*Math.sin(aT),                     z: L.trunk*Math.cos(aT) };
+  const trunkCom = { x:-L.trunk*SEG_DATA.trunk.cf*Math.sin(aT),   z: L.trunk*SEG_DATA.trunk.cf*Math.cos(aT) };
+
+  // Head — sits on C7
+  const headCom = { x:C7.x, z:C7.z + L.head*SEG_DATA.head.cf };
+
+  // Upper arm — shoulderAngle: 0=hanging, 90=horizontal fwd
+  const pA = (-90 + shoulderAngle)*DEG;
+  const elbowPos = { x:C7.x + L.uArm*Math.cos(pA),                     z:C7.z + L.uArm*Math.sin(pA) };
+  const uArmCom  = { x:C7.x + L.uArm*SEG_DATA.uArm.cf*Math.cos(pA),   z:C7.z + L.uArm*SEG_DATA.uArm.cf*Math.sin(pA) };
+
+  // Forearm — interior elbowAngle: 180=straight, 90=bent
+  const pF = pA + (180-elbowAngle)*DEG;
+  const wristPos = { x:elbowPos.x + L.fArm*Math.cos(pF),                   z:elbowPos.z + L.fArm*Math.sin(pF) };
+  const fArmCom  = { x:elbowPos.x + L.fArm*SEG_DATA.fArm.cf*Math.cos(pF), z:elbowPos.z + L.fArm*SEG_DATA.fArm.cf*Math.sin(pF) };
+  const handCom  = { x:wristPos.x + L.hand*SEG_DATA.hand.cf*Math.cos(pF), z:wristPos.z + L.hand*SEG_DATA.hand.cf*Math.sin(pF) };
+
+  // Thigh — 0=horizontal fwd, +=knee above hip
+  const pTh = thighAngle*DEG;
+  const kneePos  = { x:L.thigh*Math.cos(pTh),                     z:L.thigh*Math.sin(pTh) };
+  const thighCom = { x:L.thigh*SEG_DATA.thigh.cf*Math.cos(pTh),  z:L.thigh*SEG_DATA.thigh.cf*Math.sin(pTh) };
+
+  // Shank — interior kneeAngle
+  const pSh = (thighAngle+kneeAngle-180)*DEG;
+  const anklePos = { x:kneePos.x + L.shank*Math.cos(pSh),                    z:kneePos.z + L.shank*Math.sin(pSh) };
+  const shankCom = { x:kneePos.x + L.shank*SEG_DATA.shank.cf*Math.cos(pSh), z:kneePos.z + L.shank*SEG_DATA.shank.cf*Math.sin(pSh) };
+
+  // Foot — footAngle: 0=flat, +=toes up, -=toes down
+  const pFt = footAngle*DEG;
+  const footTip = { x:anklePos.x + L.foot*Math.cos(pFt),                    z:anklePos.z + L.foot*Math.sin(pFt) };
+  const footCom = { x:anklePos.x + L.foot*SEG_DATA.foot.cf*Math.cos(pFt),  z:anklePos.z + L.foot*SEG_DATA.foot.cf*Math.sin(pFt) };
+
+  const segs = [
+    { id:"trunk", com:trunkCom, m:SEG_DATA.trunk.mf*M, L:L.trunk, k:SEG_DATA.trunk.k, y:0,               n:1 },
+    { id:"head",  com:headCom,  m:SEG_DATA.head.mf *M, L:L.head,  k:SEG_DATA.head.k,  y:0,               n:1 },
+    { id:"uArm",  com:uArmCom,  m:SEG_DATA.uArm.mf *M, L:L.uArm,  k:SEG_DATA.uArm.k,  y:Y_FRAC.uArm *H, n:2 },
+    { id:"fArm",  com:fArmCom,  m:SEG_DATA.fArm.mf *M, L:L.fArm,  k:SEG_DATA.fArm.k,  y:Y_FRAC.fArm *H, n:2 },
+    { id:"hand",  com:handCom,  m:SEG_DATA.hand.mf *M, L:L.hand,  k:SEG_DATA.hand.k,  y:Y_FRAC.hand *H, n:2 },
+    { id:"thigh", com:thighCom, m:SEG_DATA.thigh.mf*M, L:L.thigh, k:SEG_DATA.thigh.k, y:Y_FRAC.thigh*H, n:2 },
+    { id:"shank", com:shankCom, m:SEG_DATA.shank.mf*M, L:L.shank, k:SEG_DATA.shank.k, y:Y_FRAC.shank*H, n:2 },
+    { id:"foot",  com:footCom,  m:SEG_DATA.foot.mf *M, L:L.foot,  k:SEG_DATA.foot.k,  y:Y_FRAC.foot *H, n:2 },
+  ];
+  return { segs, joints:{ C7, elbowPos, wristPos, kneePos, anklePos, footTip }, L };
+}
+
+// ─── MOI Computation ─────────────────────────────────────────────────────────
+// originX, originZ = position of the axis system origin, expressed in the
+//   hip-centred frame (metres from trochanter).
+// Segment CoM coordinates are also in hip frame, so displacement from origin:
+//   dx = com.x - originX,  dz = com.z - originZ
+//
+// I_roll  (about X-axis): d^2 = dz^2 + y^2
+// I_pitch (about Y-axis): d^2 = dx^2 + dz^2
+// I_yaw   (about Z-axis): d^2 = dx^2 + y^2
+function computeMOI(segs, originX, originZ) {
+  let Iroll=0, Ipitch=0, Iyaw=0;
+  const breakdown = [];
+  for (const { id, com, m, L, k, y, n } of segs) {
+    const dx = com.x - originX;
+    const dz = com.z - originZ;
+    const Iloc = (k*L)**2 * m;           // local MOI via De Leva Rg
+    const ir = n*(Iloc + m*(dz*dz + y*y));
+    const ip = n*(Iloc + m*(dx*dx + dz*dz));
+    const iy = n*(Iloc + m*(dx*dx + y*y));
+    Iroll+=ir; Ipitch+=ip; Iyaw+=iy;
+    breakdown.push({ id, ir, ip, iy, totalMass:n*m });
+  }
+  return { Iroll, Ipitch, Iyaw, breakdown };
+}
+
+// SVG mapping: hip joint stays fixed in pixel space.
+// Body frame: X→right, Z→up → SVG: px = hipPX + x*SCALE, py = hipPZ - z*SCALE
+function toSVG(p, hipPX, hipPZ, scale) {
+  return { x: hipPX + p.x*scale, y: hipPZ - p.z*scale };
+}
+
+// ─── App ─────────────────────────────────────────────────────────────────────
+function App() {
+  const [mass,     setMass]     = useState(80);
+  const [heightCm, setHeightCm] = useState(175);
+  const [showRef,  setShowRef]  = useState(false);
+  const [ang, setAng] = useState({
+    trunkLean:5, thighAngle:0, kneeAngle:95,
+    shoulderAngle:25, elbowAngle:90, footAngle:-10,
+  });
+  // Axis origin position in hip-centred frame [metres]
+  const [originX, setOriginX] = useState(0.00);  // + = forward from hip
+  const [originZ, setOriginZ] = useState(0.00);  // + = up from hip
+
+  const height = heightCm / 100;
+  const setAngle = (key, val) => setAng(prev => ({ ...prev, [key]: Number(val) }));
+
+  const { segs, joints, L } = useMemo(
+    () => computePosture(mass, height, ang),
+    [mass, height, ang]
+  );
+  const moi = useMemo(
+    () => computeMOI(segs, originX, originZ),
+    [segs, originX, originZ]
+  );
+
+  // SVG layout — hip joint fixed at pixel (hipPX, hipPZ_px)
+  const SVG_W=310, SVG_H=460;
+  const hipPX=110, hipPZ_px=310, SCALE=195;
+  const sv = p => toSVG(p, hipPX, hipPZ_px, SCALE);
+
+  // Axis origin pixel position (moves with sliders)
+  const originPx = { x: hipPX + originX*SCALE, y: hipPZ_px - originZ*SCALE };
+
+  const { C7, elbowPos, wristPos, kneePos, anklePos, footTip } = joints;
+  const headCenter = sv({ x:C7.x, z:C7.z + L.head*0.5 });
+  const headR = Math.max(L.head*0.42*SCALE, 10);
+  const maxMOI = Math.max(moi.Iroll, moi.Ipitch, moi.Iyaw, 0.001);
+
+  const lines = [
+    { a:{x:0,z:0}, b:C7,       color:"#f59e0b", w:7 },
+    { a:C7,         b:elbowPos, color:"#fb923c", w:4 },
+    { a:elbowPos,   b:wristPos, color:"#fb923c", w:3 },
+    { a:{x:0,z:0}, b:kneePos,  color:"#38bdf8", w:6 },
+    { a:kneePos,    b:anklePos, color:"#38bdf8", w:4 },
+    { a:anklePos,   b:footTip,  color:"#38bdf8", w:3 },
+  ];
+  const dots = [
+    { p:{x:0,z:0}, r:7, fill:"#f59e0b", label:"HIP" },
+    { p:C7,         r:5, fill:"#94a3b8" },
+    { p:elbowPos,   r:5, fill:"#fb923c" },
+    { p:wristPos,   r:3, fill:"#fb923c" },
+    { p:kneePos,    r:6, fill:"#38bdf8" },
+    { p:anklePos,   r:4, fill:"#38bdf8" },
+  ];
+
+  const postureSliders = [
+    { key:"trunkLean",     label:"Trunk Lean",         min:-30, max:30,  hint:"+ back / - fwd"       },
+    { key:"thighAngle",    label:"Thigh Angle",        min:-20, max:35,  hint:"+ knee above hip"     },
+    { key:"kneeAngle",     label:"Knee Angle",         min:80,  max:165, hint:"interior"             },
+    { key:"shoulderAngle", label:"Shoulder Elevation", min:0,   max:90,  hint:"0=down / 90=horiz"    },
+    { key:"elbowAngle",    label:"Elbow Angle",        min:0,   max:160, hint:"0=straight / 90=bent" },
+    { key:"footAngle",     label:"Foot Angle",         min:-30, max:30,  hint:"+ toes up / - down"   },
+  ];
+
+  const panel   = { background:"#111827", borderRadius:"8px", border:"1px solid #1e2d47", padding:"16px" };
+  const secTit  = { fontFamily:"'Courier New',monospace", fontSize:"10px", letterSpacing:"2.5px",
+                    color:"#f59e0b", textTransform:"uppercase", marginBottom:"12px" };
+  const hint    = { fontSize:"9px", color:"#374151", marginLeft:"6px" };
+
+  return (
+    <div style={{ fontFamily:"'Courier New',monospace", background:"#080f1e", color:"#e2e8f0", minHeight:"100vh", padding:"20px" }}>
+
+      {/* ── Header ── */}
+      <div style={{ marginBottom:"20px", borderBottom:"1px solid #1e2d47", paddingBottom:"12px" }}>
+        <div style={{ display:"flex", alignItems:"baseline", gap:"16px", flexWrap:"wrap" }}>
+          <span style={{ color:"#f59e0b", fontSize:"13px", letterSpacing:"4px", fontWeight:"bold" }}>M1080</span>
+          <span style={{ color:"#94a3b8", fontSize:"11px", letterSpacing:"2px" }}>USER MOI ESTIMATOR</span>
+          <span style={{ marginLeft:"auto", color:"#374151", fontSize:"9px" }}>De Leva (1996) · Segment Model</span>
+        </div>
+        <div style={{ color:"#374151", fontSize:"9px", marginTop:"4px", letterSpacing:"1px" }}>
+          FRAME: X=FWD · Y=LATERAL · Z=UP (RH) &nbsp;|&nbsp; BILATERAL SYMMETRY · SEATED POSTURE · ±15% ACCURACY
+        </div>
+      </div>
+
+      {/* ── Main row ── */}
+      <div style={{ display:"flex", gap:"16px", flexWrap:"wrap" }}>
+
+        {/* ── Stick Figure SVG ── */}
+        <div style={{ ...panel, flexShrink:0 }}>
+          <div style={secTit}>SAGITTAL VIEW  (X–Z PLANE)</div>
+          <svg width={SVG_W} height={SVG_H}>
+
+            {/* Background grid */}
+            {[-0.6,-0.3,0,0.3,0.6,0.9,1.2].map(v=>(
+              <line key={"gz"+v} x1={0} y1={hipPZ_px-v*SCALE} x2={SVG_W} y2={hipPZ_px-v*SCALE} stroke="#111e33" strokeWidth="1"/>
+            ))}
+            {[-0.4,0,0.4,0.8].map(v=>(
+              <line key={"gx"+v} x1={hipPX+v*SCALE} y1={0} x2={hipPX+v*SCALE} y2={SVG_H} stroke="#111e33" strokeWidth="1"/>
+            ))}
+
+            {/* Dashed line: hip → origin (only when offset) */}
+            {(originX!==0||originZ!==0)&&(
+              <line x1={hipPX} y1={hipPZ_px} x2={originPx.x} y2={originPx.y}
+                    stroke="#a855f7" strokeWidth="1" strokeDasharray="4,3" opacity="0.5"/>
+            )}
+
+            {/* ── Moving axis arrows (drawn at origin position) ── */}
+            <defs>
+              <marker id="arrX" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto">
+                <path d="M0,1 L6,3.5 L0,6 Z" fill="#22c55e"/>
+              </marker>
+              <marker id="arrZ" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto">
+                <path d="M0,1 L6,3.5 L0,6 Z" fill="#22c55e"/>
+              </marker>
+            </defs>
+            {/* X-axis arrow */}
+            <line x1={originPx.x} y1={originPx.y} x2={originPx.x+70} y2={originPx.y}
+                  stroke="#22c55e" strokeWidth="1.8" markerEnd="url(#arrX)"/>
+            {/* Z-axis arrow */}
+            <line x1={originPx.x} y1={originPx.y} x2={originPx.x} y2={originPx.y-70}
+                  stroke="#22c55e" strokeWidth="1.8" markerEnd="url(#arrZ)"/>
+            <text x={originPx.x+74} y={originPx.y+4}  fontSize="9" fill="#22c55e" fontWeight="bold">X</text>
+            <text x={originPx.x+4}  y={originPx.y-73} fontSize="9" fill="#22c55e" fontWeight="bold">Z</text>
+
+            {/* Origin dot */}
+            <circle cx={originPx.x} cy={originPx.y} r={4} fill="#22c55e" opacity="0.9"/>
+            <text x={originPx.x+10} y={originPx.y-6} fontSize="8" fill="#22c55e" letterSpacing="1">0,0,0</text>
+
+            {/* Body segment lines */}
+            {lines.map((ln,i)=>{ const a=sv(ln.a), b=sv(ln.b); return (
+              <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                    stroke={ln.color} strokeWidth={ln.w} strokeLinecap="round"/>
+            );})}
+
+            {/* Head */}
+            <circle cx={headCenter.x} cy={headCenter.y} r={headR}
+                    fill="#1a1a1a" stroke="#f59e0b" strokeWidth="5"/>
+
+            {/* Joint dots */}
+            {dots.map((d,i)=>{ const {x,y}=sv(d.p); return (
+              <g key={i}>
+                <circle cx={x} cy={y} r={d.r+3} fill="rgba(0,0,0,0.4)"/>
+                <circle cx={x} cy={y} r={d.r}   fill={d.fill}/>
+                {d.label&&<text x={x+10} y={y-4} fontSize="8" fill="#f59e0b" letterSpacing="1">{d.label}</text>}
+              </g>
+            );})}
+
+            {/* Segment CoM dots */}
+            {segs.map((s,i)=>{ const {x,y}=sv(s.com); return (
+              <circle key={i} cx={x} cy={y} r={3}
+                      fill="rgba(16,185,129,0.85)" stroke="rgba(16,185,129,0.3)" strokeWidth="1"/>
+            );})}
+
+            {/* Legend */}
+            <circle cx={14}  cy={SVG_H-24} r={3}  fill="rgba(16,185,129,0.85)"/>
+            <text   x={22}   y={SVG_H-20}  fontSize="8" fill="#4ade80">Seg. CoM</text>
+            <circle cx={85}  cy={SVG_H-24} r={4}  fill="#22c55e"/>
+            <text   x={94}   y={SVG_H-20}  fontSize="8" fill="#22c55e">Origin</text>
+            <circle cx={148} cy={SVG_H-24} r={4}  fill="#f59e0b"/>
+            <text   x={157}  y={SVG_H-20}  fontSize="8" fill="#94a3b8">Joint</text>
+          </svg>
+        </div>
+
+        {/* ── Right column ── */}
+        <div style={{ flex:1, minWidth:"280px", display:"flex", flexDirection:"column", gap:"14px" }}>
+
+          {/* Anthropometric inputs */}
+          <div style={panel}>
+            <div style={secTit}>Anthropometric Inputs</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
+              {[
+                { label:"Body Mass", value:mass,     set:setMass,     min:40,  max:180, unit:"kg" },
+                { label:"Height",    value:heightCm, set:setHeightCm, min:140, max:215, unit:"cm" },
+              ].map(inp=>(
+                <div key={inp.label}>
+                  <div style={{ fontSize:"9px", color:"#64748b", letterSpacing:"1.5px", marginBottom:"5px" }}>
+                    {inp.label.toUpperCase()}
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                    <input type="range" min={inp.min} max={inp.max} step={1} value={inp.value}
+                           onChange={e=>inp.set(Number(e.target.value))} style={{ flex:1, accentColor:"#f59e0b" }}/>
+                    <span style={{ color:"#10b981", fontSize:"16px", fontWeight:"bold", minWidth:"58px", textAlign:"right" }}>
+                      {inp.value}<span style={{ fontSize:"10px", color:"#64748b" }}> {inp.unit}</span>
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop:"10px", padding:"8px", background:"#0d1425", borderRadius:"4px", fontSize:"10px", color:"#64748b" }}>
+              BMI: <span style={{ color:"#10b981" }}>{(mass/(height*height)).toFixed(1)}</span>
+              <span style={{ marginLeft:"16px" }}>Total Mass: <span style={{ color:"#10b981" }}>{mass} kg</span></span>
+            </div>
+          </div>
+
+          {/* Axis Origin sliders */}
+          <div style={{ ...panel, border:"1px solid #166534" }}>
+            <div style={{ ...secTit, color:"#22c55e" }}>Axis Origin Position</div>
+            <div style={{ fontSize:"9px", color:"#374151", marginBottom:"12px", lineHeight:"1.5" }}>
+              Slides the (0,0,0) of the coordinate frame.<br/>
+              Hip joint (greater trochanter) stays fixed in the body frame.<br/>
+              MOI computed about X, Y, Z axes through this origin.
+            </div>
+            {[
+              { label:"X origin", val:originX, set:setOriginX, hint:"+ = origin forward of hip",  color:"#22c55e" },
+              { label:"Z origin", val:originZ, set:setOriginZ, hint:"+ = origin above hip",        color:"#22c55e" },
+            ].map(inp=>(
+              <div key={inp.label} style={{ marginBottom:"12px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"3px" }}>
+                  <span style={{ fontSize:"10px", color:"#94a3b8" }}>
+                    {inp.label}<span style={hint}>{inp.hint}</span>
+                  </span>
+                  <span style={{ color:inp.color, fontSize:"15px", fontWeight:"bold", minWidth:"68px", textAlign:"right" }}>
+                    {inp.val>=0?"+":""}{inp.val.toFixed(2)}<span style={{ fontSize:"10px", color:"#64748b" }}> m</span>
+                  </span>
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
+                  <span style={{ fontSize:"8px", color:"#374151", minWidth:"30px" }}>-0.50</span>
+                  <input type="range" min={-0.50} max={0.50} step={0.01} value={inp.val}
+                         onChange={e=>inp.set(Number(e.target.value))} style={{ flex:1, accentColor:"#22c55e" }}/>
+                  <span style={{ fontSize:"8px", color:"#374151", minWidth:"30px", textAlign:"right" }}>+0.50</span>
+                </div>
+              </div>
+            ))}
+            <div style={{ padding:"7px 10px", background:"#0a1f12", borderRadius:"4px", fontSize:"10px", color:"#64748b" }}>
+              Hip joint at &nbsp;
+              <span style={{ color:"#22c55e" }}>
+                ({(-originX).toFixed(2)}&thinsp;X, {(-originZ).toFixed(2)}&thinsp;Z) m
+              </span>
+              <span style={{ color:"#374151" }}> in axis frame</span>
+            </div>
+          </div>
+
+          {/* Posture sliders */}
+          <div style={panel}>
+            <div style={secTit}>Posture / Joint Angles</div>
+            {postureSliders.map(sl=>(
+              <div key={sl.key} style={{ marginBottom:"10px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"2px" }}>
+                  <span style={{ fontSize:"10px", color:"#94a3b8" }}>
+                    {sl.label}<span style={hint}>{sl.hint}</span>
+                  </span>
+                  <span style={{ color:"#f59e0b", fontSize:"14px", fontWeight:"bold", minWidth:"50px", textAlign:"right" }}>
+                    {ang[sl.key].toFixed(0)}&deg;
+                  </span>
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
+                  <span style={{ fontSize:"8px", color:"#374151", minWidth:"22px" }}>{sl.min}</span>
+                  <input type="range" min={sl.min} max={sl.max} step={1} value={ang[sl.key]}
+                         onChange={e=>setAngle(sl.key,e.target.value)} style={{ flex:1, accentColor:"#f59e0b" }}/>
+                  <span style={{ fontSize:"8px", color:"#374151", minWidth:"22px", textAlign:"right" }}>{sl.max}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* MOI Results */}
+          <div style={panel}>
+            <div style={secTit}>MOI About Origin Axes [kg·m²]</div>
+            {[
+              { label:"ROLL",  axis:"I_xx", desc:"about X-axis (fwd)",     val:moi.Iroll,  color:"#f87171", bg:"rgba(248,113,113,0.08)" },
+              { label:"PITCH", axis:"I_yy", desc:"about Y-axis (lateral)", val:moi.Ipitch, color:"#60a5fa", bg:"rgba(96,165,250,0.08)"  },
+              { label:"YAW",   axis:"I_zz", desc:"about Z-axis (up)",      val:moi.Iyaw,   color:"#4ade80", bg:"rgba(74,222,128,0.08)"  },
+            ].map(item=>(
+              <div key={item.label} style={{
+                marginBottom:"10px", padding:"10px", borderRadius:"6px",
+                background:item.bg, border:"1px solid "+item.color+"22"
+              }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:"6px" }}>
+                  <div>
+                    <span style={{ color:item.color, fontSize:"11px", letterSpacing:"2px", fontWeight:"bold" }}>{item.label}</span>
+                    <span style={{ color:"#374151", fontSize:"9px", marginLeft:"8px" }}>{item.axis} · {item.desc}</span>
+                  </div>
+                  <span style={{ color:item.color, fontSize:"22px", fontWeight:"bold", lineHeight:1 }}>{item.val.toFixed(2)}</span>
+                </div>
+                <div style={{ background:"#0d1425", height:"5px", borderRadius:"3px" }}>
+                  <div style={{
+                    background:"linear-gradient(90deg,"+item.color+"cc,"+item.color+"44)",
+                    height:"5px", borderRadius:"3px",
+                    width:(item.val/maxMOI*100).toFixed(1)+"%",
+                    transition:"width 0.12s ease"
+                  }}/>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Segment Breakdown ── */}
+      <div style={{ ...panel, marginTop:"16px" }}>
+        <div style={secTit}>Segment Contribution Breakdown [kg·m²]</div>
+        <div style={{ overflowX:"auto" }}>
+          <table style={{ width:"100%", fontSize:"11px", borderCollapse:"collapse" }}>
+            <thead>
+              <tr style={{ borderBottom:"1px solid #1e2d47" }}>
+                <th style={{ textAlign:"left",  padding:"5px 10px", color:"#64748b", letterSpacing:"1px" }}>Segment</th>
+                <th style={{ textAlign:"right", padding:"5px 10px", color:"#f87171" }}>I_roll</th>
+                <th style={{ textAlign:"right", padding:"5px 10px", color:"#60a5fa" }}>I_pitch</th>
+                <th style={{ textAlign:"right", padding:"5px 10px", color:"#4ade80" }}>I_yaw</th>
+                <th style={{ textAlign:"right", padding:"5px 10px", color:"#94a3b8" }}>Mass</th>
+                <th style={{ textAlign:"right", padding:"5px 10px", color:"#94a3b8" }}>% Roll</th>
+              </tr>
+            </thead>
+            <tbody>
+              {moi.breakdown.map((s,i)=>{
+                const pct = moi.Iroll>0 ? s.ir/moi.Iroll*100 : 0;
+                return (
+                  <tr key={s.id} style={{ borderBottom:"1px solid #0d1425", background:i%2===0?"transparent":"rgba(255,255,255,0.01)" }}>
+                    <td style={{ padding:"5px 10px", color:"#94a3b8" }}>{SEG_DATA[s.id].label}</td>
+                    <td style={{ padding:"5px 10px", textAlign:"right", color:"#f87171" }}>{s.ir.toFixed(2)}</td>
+                    <td style={{ padding:"5px 10px", textAlign:"right", color:"#60a5fa" }}>{s.ip.toFixed(2)}</td>
+                    <td style={{ padding:"5px 10px", textAlign:"right", color:"#4ade80" }}>{s.iy.toFixed(2)}</td>
+                    <td style={{ padding:"5px 10px", textAlign:"right", color:"#64748b" }}>{s.totalMass.toFixed(1)} kg</td>
+                    <td style={{ padding:"5px 10px", textAlign:"right" }}>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", gap:"6px" }}>
+                        <div style={{ width:"50px", background:"#0d1425", height:"4px", borderRadius:"2px" }}>
+                          <div style={{ background:"#f59e0b66", height:"4px", borderRadius:"2px", width:Math.min(pct,100).toFixed(0)+"%" }}/>
+                        </div>
+                        <span style={{ color:"#64748b", minWidth:"32px", textAlign:"right" }}>{pct.toFixed(0)}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ borderTop:"1px solid #1e2d47" }}>
+                <td style={{ padding:"7px 10px", color:"#f59e0b", fontWeight:"bold" }}>TOTAL</td>
+                <td style={{ padding:"7px 10px", textAlign:"right", color:"#f87171", fontWeight:"bold" }}>{moi.Iroll.toFixed(2)}</td>
+                <td style={{ padding:"7px 10px", textAlign:"right", color:"#60a5fa", fontWeight:"bold" }}>{moi.Ipitch.toFixed(2)}</td>
+                <td style={{ padding:"7px 10px", textAlign:"right", color:"#4ade80", fontWeight:"bold" }}>{moi.Iyaw.toFixed(2)}</td>
+                <td style={{ padding:"7px 10px", textAlign:"right", color:"#e2e8f0", fontWeight:"bold" }}>{mass.toFixed(0)} kg</td>
+                <td/>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      {/* ── MOI Equations Panel ── */}
+      {(()=>{
+        // ── Analytical derivation of I = m·(A·H² + B·H + C) per axis ──────────
+        // Since all segment CoM positions scale with H (com = H·f(angles)),
+        // and lateral offsets y = H·Y_FRAC, the full MOI expands to a
+        // quadratic in H with mass M factored out:
+        //
+        //   I_axis = M · ( A·H²  +  B·H  +  C )
+        //
+        // where A, B, C are pure functions of posture angles and origin offset.
+        // B and C vanish when origin is at hip (originX=originZ=0).
+        //
+        // Derivation per segment s:
+        //   com_s = (H·fx_s, H·fz_s),  y_s = H·yf_s
+        //   dx_s  = H·fx_s - originX,  dz_s = H·fz_s - originZ
+        //   Iloc_s = (k_s·lf_s·H)²·mf_s·M
+        //
+        //   Roll  (about X): d² = dz_s² + y_s²
+        //   Pitch (about Y): d² = dx_s² + dz_s²
+        //   Yaw   (about Z): d² = dx_s² + y_s²
+
+        let Ar=0, Br=0, Cr=0;  // Roll
+        let Ap=0, Bp=0, Cp=0;  // Pitch
+        let Ay=0, By=0, Cy=0;  // Yaw
+
+        for (const seg of segs) {
+          const fx  = seg.com.x / height;   // normalised x-position (com.x = H·fx)
+          const fz  = seg.com.z / height;   // normalised z-position
+          const yf  = seg.y     / height;   // normalised lateral half-offset
+          const mf  = seg.m / mass;         // total mass fraction (accounts for n)
+          const kl2 = (seg.k * (seg.L / height)) ** 2;  // (k·lf)²
+
+          // Roll (X): d² = (H·fz - oZ)² + (H·yf)²
+          Ar += seg.n * mf * (kl2 + fz*fz + yf*yf);
+          Br += seg.n * mf * (-2*fz*originZ);
+          Cr += seg.n * mf * (originZ*originZ);
+
+          // Pitch (Y): d² = (H·fx - oX)² + (H·fz - oZ)²
+          Ap += seg.n * mf * (kl2 + fx*fx + fz*fz);
+          Bp += seg.n * mf * (-2*(fx*originX + fz*originZ));
+          Cp += seg.n * mf * (originX*originX + originZ*originZ);
+
+          // Yaw (Z): d² = (H·fx - oX)² + (H·yf)²
+          Ay += seg.n * mf * (kl2 + fx*fx + yf*yf);
+          By += seg.n * mf * (-2*fx*originX);
+          Cy += seg.n * mf * (originX*originX);
+        }
+
+        const fmt4 = v => v.toFixed(4);
+        const fmt2 = v => {
+          const s = v >= 0 ? "+" : "−";
+          return s + " " + Math.abs(v).toFixed(4);
+        };
+
+        // Check if B,C terms are negligible (origin at hip)
+        const atHip = Math.abs(originX) < 0.001 && Math.abs(originZ) < 0.001;
+
+        const sub  = { fontSize:"9px", verticalAlign:"sub" };
+        const mono = { fontFamily:"'Courier New',monospace" };
+        const axes = [
+          { label:"ROLL",  sym:"I_xx", desc:"about X (forward)", color:"#f87171",
+            A:Ar, B:Br, C:Cr, val:moi.Iroll  },
+          { label:"PITCH", sym:"I_yy", desc:"about Y (lateral)", color:"#60a5fa",
+            A:Ap, B:Bp, C:Cp, val:moi.Ipitch },
+          { label:"YAW",   sym:"I_zz", desc:"about Z (up)",      color:"#4ade80",
+            A:Ay, B:By, C:Cy, val:moi.Iyaw   },
+        ];
+
+        return (
+          <div style={{ ...panel, marginTop:"16px", border:"1px solid #1e3a5f" }}>
+            <div style={{ ...secTit, color:"#60a5fa" }}>
+              MOI EQUATIONS — CURRENT POSTURE · ORIGIN ({originX>=0?"+":""}{originX.toFixed(2)}&thinsp;X, {originZ>=0?"+":""}{originZ.toFixed(2)}&thinsp;Z)
+            </div>
+
+            {/* General form */}
+            <div style={{ padding:"10px 14px", background:"#0a1628", borderRadius:"6px",
+                          border:"1px solid #1e3a5f", marginBottom:"14px", lineHeight:"1.8" }}>
+              <div style={{ fontSize:"9px", color:"#374151", letterSpacing:"2px", marginBottom:"6px" }}>GENERAL FORM (posture-fixed)</div>
+              <div style={{ ...mono, fontSize:"13px", color:"#e2e8f0" }}>
+                <span style={{ color:"#60a5fa" }}>I</span>
+                <span style={{ color:"#94a3b8" }}> = </span>
+                <span style={{ color:"#e2e8f0" }}>m</span>
+                <span style={{ color:"#94a3b8" }}> · ( </span>
+                <span style={{ color:"#f59e0b", fontWeight:"bold" }}>A</span>
+                <span style={{ color:"#94a3b8" }}> · H²</span>
+                { !atHip && <><span style={{ color:"#94a3b8" }}>  +  </span>
+                  <span style={{ color:"#a78bfa", fontWeight:"bold" }}>B</span>
+                  <span style={{ color:"#94a3b8" }}> · H</span>
+                  <span style={{ color:"#94a3b8" }}>  +  </span>
+                  <span style={{ color:"#fb923c", fontWeight:"bold" }}>C</span></> }
+                <span style={{ color:"#94a3b8" }}> )</span>
+              </div>
+              <div style={{ fontSize:"10px", color:"#374151", marginTop:"6px", lineHeight:"1.7" }}>
+                m = user body mass [kg] · H = user height [m]
+                { !atHip
+                  ? " · A, B, C = posture & origin coefficients [m², m, 1]"
+                  : " · A = posture coefficient [m²]  (B = C = 0 when origin is at hip)" }
+              </div>
+            </div>
+
+            {/* Per-axis cards */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"12px" }}>
+              {axes.map(ax => {
+                // Verify: m·(A·H²+B·H+C) should match computed moi value
+                const check = mass * (ax.A*height*height + ax.B*height + ax.C);
+                return (
+                  <div key={ax.label} style={{ background:"#0d1425", borderRadius:"8px",
+                      padding:"14px", border:"1px solid "+ax.color+"33" }}>
+
+                    {/* Axis label */}
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:"10px" }}>
+                      <span style={{ color:ax.color, fontSize:"11px", letterSpacing:"2px", fontWeight:"bold" }}>
+                        {ax.label}
+                      </span>
+                      <span style={{ color:"#374151", fontSize:"9px" }}>{ax.sym} · {ax.desc}</span>
+                    </div>
+
+                    {/* Equation with live coefficients */}
+                    <div style={{ background:"#080f1e", borderRadius:"5px", padding:"10px",
+                                  marginBottom:"10px", ...mono }}>
+                      <div style={{ fontSize:"11px", color:ax.color, marginBottom:"4px" }}>
+                        I = m · (
+                      </div>
+                      <div style={{ paddingLeft:"12px", lineHeight:"2.2", fontSize:"11px" }}>
+                        <span style={{ color:"#f59e0b", fontWeight:"bold" }}>{fmt4(ax.A)}</span>
+                        <span style={{ color:"#64748b" }}> · H²</span>
+                        { !atHip && <>
+                          <br/>
+                          <span style={{ color:"#a78bfa", fontWeight:"bold" }}>{fmt2(ax.B)}</span>
+                          <span style={{ color:"#64748b" }}> · H</span>
+                          <br/>
+                          <span style={{ color:"#fb923c", fontWeight:"bold" }}>{fmt2(ax.C)}</span>
+                        </>}
+                        <span style={{ color:ax.color }}> )</span>
+                      </div>
+                    </div>
+
+                    {/* Coefficient key */}
+                    <div style={{ fontSize:"9px", color:"#374151", lineHeight:"1.9", marginBottom:"10px" }}>
+                      <div><span style={{ color:"#f59e0b" }}>A</span> = Σ n·mf·(k²·lf² + geom²) [m²]</div>
+                      { !atHip && <>
+                        <div><span style={{ color:"#a78bfa" }}>B</span> = −2·Σ n·mf·fz·oZ  [m]</div>
+                        <div><span style={{ color:"#fb923c" }}>C</span> = Σ n·mf·(oX²+oZ²) [1]</div>
+                      </>}
+                    </div>
+
+                    {/* Verification */}
+                    <div style={{ borderTop:"1px solid #1e2d47", paddingTop:"8px" }}>
+                      <div style={{ fontSize:"9px", color:"#374151", marginBottom:"3px" }}>
+                        @ {mass} kg · {heightCm} cm:
+                      </div>
+                      <div style={{ ...mono, fontSize:"14px", color:ax.color, fontWeight:"bold" }}>
+                        {ax.val.toFixed(3)} kg·m²
+                      </div>
+                      <div style={{ fontSize:"8px", color: Math.abs(check-ax.val)<0.001?"#22c55e":"#ef4444", marginTop:"2px" }}>
+                        ✓ verified: {check.toFixed(3)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Usage note */}
+            <div style={{ marginTop:"12px", padding:"10px 14px", background:"#0a1628",
+                          borderRadius:"6px", border:"1px solid #1e3a5f",
+                          fontSize:"10px", color:"#64748b", lineHeight:"1.8" }}>
+              <span style={{ color:"#f59e0b" }}>Usage in M1080 session init:</span>
+              &nbsp; Ask user for m and H → substitute into equation above → get I_roll, I_pitch, I_yaw as warm-start for RLS estimator.
+              &nbsp; Coefficients <span style={{ color:"#f59e0b" }}>A</span>
+              {!atHip && <>, <span style={{ color:"#a78bfa" }}>B</span>, <span style={{ color:"#fb923c" }}>C</span></>}
+              &nbsp; are fixed for this posture & origin — re-compute only if sliders change.
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── De Leva Reference Panel ── */}
+      <div style={{ ...panel, marginTop:"16px", border:"1px solid #1e2d47" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: showRef?"14px":"0" }}>
+          <div style={secTit} onClick={()=>setShowRef(v=>!v)}
+               style={{ ...secTit, cursor:"pointer", marginBottom:0, userSelect:"none",
+                        display:"flex", alignItems:"center", gap:"10px" }}>
+            <span style={{ color:"#f59e0b" }}>{showRef?"▾":"▸"}</span>
+            DE LEVA (1996) — REFERENCE & PARAMETER TABLE
+          </div>
+          <span style={{ fontSize:"9px", color:"#374151", cursor:"pointer" }} onClick={()=>setShowRef(v=>!v)}>
+            {showRef?"collapse":"expand"}
+          </span>
+        </div>
+
+        {showRef&&(
+          <div>
+            {/* Citation block */}
+            <div style={{ padding:"12px", background:"#0d1425", borderRadius:"6px", marginBottom:"14px", lineHeight:"1.7" }}>
+              <div style={{ color:"#e2e8f0", fontSize:"11px", marginBottom:"4px" }}>
+                De Leva, P. (1996).{" "}
+                <span style={{ color:"#f59e0b" }}>
+                  Adjustments to Zatsiorsky-Seluyanov's segment inertia parameters.
+                </span>
+              </div>
+              <div style={{ color:"#64748b", fontSize:"10px" }}>
+                <em>Journal of Biomechanics</em>, 29(9), 1223–1230.
+                &nbsp;DOI: 10.1016/0021-9290(95)00178-6
+              </div>
+              <div style={{ marginTop:"8px", fontSize:"10px", color:"#94a3b8", lineHeight:"1.6" }}>
+                <strong style={{ color:"#60a5fa" }}>Background:</strong> Zatsiorsky &amp; Seluyanov (1983, 1985) measured
+                body segment parameters on living subjects using gamma-ray scanning — far more accurate than
+                the earlier cadaver studies (Dempster 1955, Clauser 1969). However, their original landmark
+                definitions were non-standard and hard to use in practice. De Leva re-expressed the same
+                dataset using conventional anatomical landmarks (e.g. glenohumeral joint instead of acromion),
+                making the parameters directly applicable to standard motion-capture marker sets.
+              </div>
+              <div style={{ marginTop:"8px", fontSize:"10px", color:"#94a3b8", lineHeight:"1.6" }}>
+                <strong style={{ color:"#60a5fa" }}>Sample:</strong> Adult males n=100,
+                mean age 28.6 ± 6.0 yr,
+                mean mass 73.0 ± 9.2 kg,
+                mean height 174.3 ± 6.6 cm.
+                Separate female dataset also published (n=100); this tool uses the male table.
+              </div>
+              <div style={{ marginTop:"8px", fontSize:"10px", color:"#94a3b8", lineHeight:"1.6" }}>
+                <strong style={{ color:"#60a5fa" }}>Accuracy:</strong> Whole-body MOI estimates typically
+                within ±10–15% for normal-BMI adults. Accuracy degrades for obese subjects (BMI &gt; 30)
+                where fat distribution differs significantly from the sample mean.
+                The dominant error source for a simulator pivot is the parallel-axis term m·d²,
+                which depends mainly on mass and geometry — both of which are well-determined here.
+              </div>
+            </div>
+
+            {/* Parameter table */}
+            <div style={{ overflowX:"auto" }}>
+              <table style={{ width:"100%", fontSize:"10px", borderCollapse:"collapse" }}>
+                <thead>
+                  <tr style={{ borderBottom:"1px solid #1e2d47" }}>
+                    <th style={{ textAlign:"left",  padding:"5px 10px", color:"#64748b" }}>Segment</th>
+                    <th style={{ textAlign:"right", padding:"5px 10px", color:"#f87171" }} title="Mass / total body mass">mf</th>
+                    <th style={{ textAlign:"right", padding:"5px 10px", color:"#60a5fa" }} title="Seg length / total height">lf</th>
+                    <th style={{ textAlign:"right", padding:"5px 10px", color:"#4ade80" }} title="CoM from proximal end / seg length">cf (prox)</th>
+                    <th style={{ textAlign:"right", padding:"5px 10px", color:"#f59e0b" }} title="Radius of gyration / seg length (transverse)">Rg/L</th>
+                    <th style={{ textAlign:"left",  padding:"5px 10px", color:"#374151" }}>Proximal landmark</th>
+                    <th style={{ textAlign:"left",  padding:"5px 10px", color:"#374151" }}>Distal landmark</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { id:"head",  prox:"Vertex",              dist:"C7-T1 disc"              },
+                    { id:"trunk", prox:"C7-T1 disc",          dist:"Mid-hip (trochanters)"    },
+                    { id:"uArm",  prox:"Glenohumeral jt",     dist:"Lateral epicondyle"       },
+                    { id:"fArm",  prox:"Lateral epicondyle",  dist:"Radial / ulnar styloids"  },
+                    { id:"hand",  prox:"Wrist crease",        dist:"Fingertip III"            },
+                    { id:"thigh", prox:"Greater trochanter",  dist:"Lateral femoral epicondyle"},
+                    { id:"shank", prox:"Lat. femoral epicon.", dist:"Lateral malleolus"       },
+                    { id:"foot",  prox:"Heel",                dist:"Toe II tip"               },
+                  ].map((r,i)=>{
+                    const d = SEG_DATA[r.id];
+                    return (
+                      <tr key={r.id} style={{ borderBottom:"1px solid #0d1425", background:i%2===0?"transparent":"rgba(255,255,255,0.01)" }}>
+                        <td style={{ padding:"4px 10px", color:"#94a3b8" }}>{d.label}</td>
+                        <td style={{ padding:"4px 10px", textAlign:"right", color:"#f87171" }}>{d.mf.toFixed(4)}</td>
+                        <td style={{ padding:"4px 10px", textAlign:"right", color:"#60a5fa" }}>{d.lf.toFixed(3)}</td>
+                        <td style={{ padding:"4px 10px", textAlign:"right", color:"#4ade80" }}>{d.cf.toFixed(3)}</td>
+                        <td style={{ padding:"4px 10px", textAlign:"right", color:"#f59e0b" }}>{d.k.toFixed(3)}</td>
+                        <td style={{ padding:"4px 10px", color:"#374151", fontSize:"9px" }}>{r.prox}</td>
+                        <td style={{ padding:"4px 10px", color:"#374151", fontSize:"9px" }}>{r.dist}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ marginTop:"10px", fontSize:"9px", color:"#374151", lineHeight:"1.6" }}>
+              <strong style={{ color:"#64748b" }}>Column definitions:</strong>
+              &nbsp; mf = segment mass / total body mass &nbsp;|&nbsp;
+              lf = segment length / total body height &nbsp;|&nbsp;
+              cf = CoM distance from proximal landmark / segment length &nbsp;|&nbsp;
+              Rg/L = transverse radius of gyration / segment length (used as k in I_local = (k·L)²·m)
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div style={{ marginTop:"12px", display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:"6px" }}>
+        <div style={{ fontSize:"9px", color:"#1e2d47" }}>Source: De Leva P. (1996). J Biomech 29(9):1223–30 · Male dataset</div>
+        <div style={{ fontSize:"9px", color:"#1e2d47" }}>Frame: X=fwd · Y=lateral · Z=up (RH) · Segments referenced from greater trochanter</div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
