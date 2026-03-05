@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
@@ -83,6 +83,45 @@ const SEG_DATA_DUMAS = {
   shank: { mf:0.0427, lf:0.2460, cf:0.4416, k:0.2510, label:"Shanks x2"     },
   foot:  { mf:0.0137, lf:0.1522, cf:0.4014, k:0.2570, label:"Feet x2"       },
 };
+
+// ─── De Leva (1996) FEMALE Segment Parameters ────────────────────────────────
+// Same source paper, Table 4 (females). n=100 living adult females.
+// Mean age 28.6±5.7 yr, mass 61.9±8.8 kg, height 160.9±6.1 cm.
+// Notable: thigh mf=0.1478 vs male 0.1000 (+48%) — largest inter-sex difference.
+const SEG_DATA_F = {
+  head:  { mf:0.0668, lf:0.1307, cf:0.5050, k:0.2710, label:"Head + Neck"   },
+  trunk: { mf:0.4257, lf:0.2904, cf:0.4928, k:0.3070, label:"Trunk"         },
+  uArm:  { mf:0.0255, lf:0.1730, cf:0.5754, k:0.2780, label:"Upper Arms x2" },
+  fArm:  { mf:0.0138, lf:0.1463, cf:0.4559, k:0.2610, label:"Forearms x2"   },
+  hand:  { mf:0.0056, lf:0.0581, cf:0.7474, k:0.5310, label:"Hands x2"      },
+  thigh: { mf:0.1478, lf:0.2454, cf:0.3713, k:0.3690, label:"Thighs x2"     },
+  shank: { mf:0.0481, lf:0.2459, cf:0.4415, k:0.2670, label:"Shanks x2"     },
+  foot:  { mf:0.0129, lf:0.1522, cf:0.4014, k:0.2990, label:"Feet x2"       },
+};
+
+// ─── Dumas et al. (2007) FEMALE Segment Parameters ───────────────────────────
+// Source data: Young, J.W., Chandler, R.F., Snow, C.C., Robinette, K.M.,
+//   Zehner, G.F., & Lofberg, M.S. (1983). Anthropometric and mass distribution
+//   characteristics of the adult female. FAA-AM-83-16, Oklahoma City.
+//   Stereophotogrammetry on n=24 living adult females.
+//   Dumas re-expressed with joint-centre landmarks (same paper, Table 3).
+const SEG_DATA_DUMAS_F = {
+  head:  { mf:0.0668, lf:0.1307, cf:0.5002, k:0.2710, label:"Head + Neck"   },
+  trunk: { mf:0.4257, lf:0.3060, cf:0.4964, k:0.3070, label:"Trunk"         },
+  uArm:  { mf:0.0255, lf:0.1730, cf:0.5722, k:0.2780, label:"Upper Arms x2" },
+  fArm:  { mf:0.0138, lf:0.1460, cf:0.4574, k:0.2610, label:"Forearms x2"   },
+  hand:  { mf:0.0056, lf:0.0572, cf:0.7474, k:0.5310, label:"Hands x2"      },
+  thigh: { mf:0.1478, lf:0.2450, cf:0.3720, k:0.3690, label:"Thighs x2"     },
+  shank: { mf:0.0481, lf:0.2460, cf:0.4416, k:0.2670, label:"Shanks x2"     },
+  foot:  { mf:0.0129, lf:0.1522, cf:0.4014, k:0.2990, label:"Feet x2"       },
+};
+
+// ─── Dataset selector — returns correct pair based on gender ─────────────────
+function getDatasets(gender) {
+  return gender === 'F'
+    ? { dl: SEG_DATA_F, du: SEG_DATA_DUMAS_F }
+    : { dl: SEG_DATA,   du: SEG_DATA_DUMAS   };
+}
 
 // Lateral Y half-width (bilateral offset) as fraction of total height
 // Shoulder half-width ~0.13H, hip half-width ~0.09H
@@ -188,6 +227,7 @@ function toSVG(p, hipPX, hipPZ, scale) {
 function App() {
   const [mass,     setMass]     = useState(80);
   const [heightCm, setHeightCm] = useState(175);
+  const [gender,   setGender]   = useState('M');  // 'M' or 'F'
   const [showRef,  setShowRef]  = useState(false);
   const [ang, setAng] = useState({
     trunkLean:5, thighAngle:0, kneeAngle:95,
@@ -200,10 +240,13 @@ function App() {
   const height = heightCm / 100;
   const setAngle = (key, val) => setAng(prev => ({ ...prev, [key]: Number(val) }));
 
+  // Select datasets based on gender
+  const { dl: dlData, du: duData } = getDatasets(gender);
+
   // De Leva dataset (used for stick figure — primary reference)
   const { segs, joints, L } = useMemo(
-    () => computePosture(mass, height, ang, SEG_DATA),
-    [mass, height, ang]
+    () => computePosture(mass, height, ang, dlData),
+    [mass, height, ang, gender]
   );
   const moiDL = useMemo(
     () => computeMOI(segs, originX, originZ),
@@ -212,8 +255,8 @@ function App() {
 
   // Dumas 2007 dataset
   const { segs: segsDumas } = useMemo(
-    () => computePosture(mass, height, ang, SEG_DATA_DUMAS),
-    [mass, height, ang]
+    () => computePosture(mass, height, ang, duData),
+    [mass, height, ang, gender]
   );
   const moiDumas = useMemo(
     () => computeMOI(segsDumas, originX, originZ),
@@ -374,6 +417,25 @@ function App() {
           {/* Anthropometric inputs */}
           <div style={panel}>
             <div style={secTit}>Anthropometric Inputs</div>
+
+            {/* Gender toggle */}
+            <div style={{ display:"flex", gap:"8px", marginBottom:"14px" }}>
+              {[{v:'M',label:'♂  MALE'},{v:'F',label:'♀  FEMALE'}].map(g=>(
+                <button key={g.v} onClick={()=>{
+                  setGender(g.v);
+                  // Reset mass/height to typical population mean for selected gender
+                  if(g.v==='M'){ setMass(75); setHeightCm(175); }
+                  else         { setMass(62); setHeightCm(161); }
+                }} style={{
+                  flex:1, padding:"7px 0", borderRadius:"5px", border:"none", cursor:"pointer",
+                  fontFamily:"'Courier New',monospace", fontSize:"11px", letterSpacing:"2px", fontWeight:"bold",
+                  background: gender===g.v ? (g.v==='M'?"#1e3a5f":"#3b1f6b") : "#0d1425",
+                  color:       gender===g.v ? (g.v==='M'?"#60a5fa":"#c084fc") : "#374151",
+                  border:      gender===g.v ? ("1px solid "+(g.v==='M'?"#3b82f6":"#a855f7")) : "1px solid #1e2d47",
+                  transition:"all 0.15s"
+                }}>{g.label}</button>
+              ))}
+            </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
               {[
                 { label:"Body Mass", value:mass,     set:setMass,     min:40,  max:180, unit:"kg" },
@@ -395,7 +457,10 @@ function App() {
             </div>
             <div style={{ marginTop:"10px", padding:"8px", background:"#0d1425", borderRadius:"4px", fontSize:"10px", color:"#64748b" }}>
               BMI: <span style={{ color:"#10b981" }}>{(mass/(height*height)).toFixed(1)}</span>
-              <span style={{ marginLeft:"16px" }}>Total Mass: <span style={{ color:"#10b981" }}>{mass} kg</span></span>
+              <span style={{ marginLeft:"16px" }}>Mass: <span style={{ color:"#10b981" }}>{mass} kg</span></span>
+              <span style={{ marginLeft:"16px", color: gender==='M'?"#60a5fa":"#c084fc" }}>
+                Dataset: {gender==='M'?"De Leva male (n=100) · Dumas male (n=31)":"De Leva female (n=100) · Dumas female (n=24)"}
+              </span>
             </div>
           </div>
 
@@ -756,7 +821,7 @@ function App() {
             {/* ══ De Leva 1996 ══ */}
             <div style={{ marginBottom:"20px" }}>
               <div style={{ fontSize:"9px", color:"#f59e0b", letterSpacing:"2px", marginBottom:"8px", borderBottom:"1px solid #1e2d47", paddingBottom:"4px" }}>
-                [1] DE LEVA (1996)
+                [1] DE LEVA (1996) — {gender==='M'?"MALE (n=100)":"FEMALE (n=100)"}
               </div>
               <div style={{ padding:"12px", background:"#0d1425", borderRadius:"6px", marginBottom:"10px", lineHeight:"1.7" }}>
                 <div style={{ color:"#e2e8f0", fontSize:"11px", marginBottom:"4px" }}>
@@ -767,12 +832,15 @@ function App() {
                 </div>
                 <div style={{ marginTop:"8px", fontSize:"10px", color:"#94a3b8", lineHeight:"1.6" }}>
                   <strong style={{ color:"#60a5fa" }}>Source data:</strong> Zatsiorsky &amp; Seluyanov (1983–1990) in-vivo gamma-ray scanning on
-                  living subjects. De Leva re-expressed the same dataset using joint-centre landmarks instead of bony landmarks,
-                  making parameters directly usable with standard motion capture.
+                  living subjects. De Leva re-expressed using joint-centre landmarks for standard motion capture compatibility.
                 </div>
                 <div style={{ marginTop:"6px", fontSize:"10px", color:"#94a3b8", lineHeight:"1.6" }}>
-                  <strong style={{ color:"#60a5fa" }}>Sample:</strong> Adult males n=100, age 28.6±6.0 yr, mass 73.0±9.2 kg, height 174.3±6.6 cm (Caucasian).
-                  &nbsp;<strong style={{ color:"#60a5fa" }}>Measurement:</strong> Gamma-ray scanning (in-vivo, high accuracy).
+                  {gender==='M'
+                    ? <><strong style={{ color:"#60a5fa" }}>Male sample:</strong> n=100, age 28.6±6.0 yr, mass 73.0±9.2 kg, height 174.3±6.6 cm.</>
+                    : <><strong style={{ color:"#c084fc" }}>Female sample:</strong> n=100, age 28.6±5.7 yr, mass 61.9±8.8 kg, height 160.9±6.1 cm.
+                        &nbsp;Key difference from males: thigh mf=0.1478 vs male 0.1000 (+48%).</>
+                  }
+                  &nbsp;<strong style={{ color:"#60a5fa" }}>Measurement:</strong> Gamma-ray scanning (in-vivo).
                   &nbsp;<strong style={{ color:"#60a5fa" }}>Accuracy:</strong> ±10–15% whole-body MOI.
                 </div>
               </div>
@@ -799,7 +867,7 @@ function App() {
                       { id:"thigh", prox:"Greater trochanter",  dist:"Lat. femoral epicondyle"   },
                       { id:"shank", prox:"Lat. femoral epicon", dist:"Lateral malleolus"         },
                       { id:"foot",  prox:"Heel",                dist:"Toe II tip"                },
-                    ].map((r,i)=>{ const d=SEG_DATA[r.id]; return (
+                    ].map((r,i)=>{ const d=dlData[r.id]; return (
                       <tr key={r.id} style={{ borderBottom:"1px solid #0d1425", background:i%2===0?"transparent":"rgba(255,255,255,0.01)" }}>
                         <td style={{ padding:"4px 8px", color:"#94a3b8" }}>{d.label}</td>
                         <td style={{ padding:"4px 8px", textAlign:"right", color:"#f87171" }}>{d.mf.toFixed(4)}</td>
@@ -818,7 +886,7 @@ function App() {
             {/* ══ Dumas 2007 ══ */}
             <div style={{ marginBottom:"16px" }}>
               <div style={{ fontSize:"9px", color:"#a78bfa", letterSpacing:"2px", marginBottom:"8px", borderBottom:"1px solid #1e2d47", paddingBottom:"4px" }}>
-                [2] DUMAS, CHÈZE &amp; VERRIEST (2007)
+                [2] DUMAS, CHÈZE &amp; VERRIEST (2007) — {gender==='M'?"MALE (n=31)":"FEMALE (n=24)"}
               </div>
               <div style={{ padding:"12px", background:"#0d1425", borderRadius:"6px", marginBottom:"10px", lineHeight:"1.7" }}>
                 <div style={{ color:"#e2e8f0", fontSize:"11px", marginBottom:"4px" }}>
@@ -829,15 +897,17 @@ function App() {
                   <em>Journal of Biomechanics</em>, 40(3), 543–553. &nbsp;DOI: 10.1016/j.jbiomech.2006.10.016
                 </div>
                 <div style={{ marginTop:"8px", fontSize:"10px", color:"#94a3b8", lineHeight:"1.6" }}>
-                  <strong style={{ color:"#a78bfa" }}>Source data:</strong> McConville, Churchill, Kaleps, Clauser &amp; Cuzzi (1980) AFAMRL TR-80-119,
-                  Wright-Patterson AFB — stereophotogrammetry on living subjects. Dumas re-expressed using joint-centre landmarks
-                  and standard biomechanics coordinate frames, analogous to what De Leva did for Zatsiorsky.
-                  Provides full inertia tensors including products of inertia (Ixy, Ixz, Iyz).
+                  <strong style={{ color:"#a78bfa" }}>Source data:</strong> McConville et al. (1980) AFAMRL TR-80-119 (males) &amp;
+                  Young et al. (1983) FAA-AM-83-16 (females) — stereophotogrammetry on living subjects.
+                  Dumas re-expressed using joint-centre landmarks. Provides full inertia tensors including off-diagonal terms.
                 </div>
                 <div style={{ marginTop:"6px", fontSize:"10px", color:"#94a3b8", lineHeight:"1.6" }}>
-                  <strong style={{ color:"#a78bfa" }}>Sample:</strong> Adult males n=31, age 27.0±4.1 yr, mass 73.7±9.5 kg, height 177.3±6.1 cm (Caucasian).
+                  {gender==='M'
+                    ? <><strong style={{ color:"#a78bfa" }}>Male sample:</strong> n=31, age 27.0±4.1 yr, mass 73.7±9.5 kg, height 177.3±6.1 cm.</>
+                    : <><strong style={{ color:"#c084fc" }}>Female sample:</strong> n=24, age 27.0±4.8 yr, mass 63.4±9.2 kg, height 165.0±6.1 cm.</>
+                  }
                   &nbsp;<strong style={{ color:"#a78bfa" }}>Measurement:</strong> Stereophotogrammetry (in-vivo).
-                  &nbsp;<strong style={{ color:"#a78bfa" }}>Key advantage over De Leva:</strong> Full 3D inertia tensor — useful if M1080 requires off-diagonal coupling terms.
+                  &nbsp;<strong style={{ color:"#a78bfa" }}>Key advantage:</strong> Full 3D inertia tensor with off-diagonal coupling terms.
                 </div>
               </div>
               <div style={{ overflowX:"auto" }}>
@@ -854,9 +924,9 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {Object.keys(SEG_DATA_DUMAS).map((id,i)=>{
-                      const d = SEG_DATA_DUMAS[id];
-                      const dl = SEG_DATA[id];
+                    {Object.keys(duData).map((id,i)=>{
+                      const d  = duData[id];
+                      const dl = dlData[id];
                       const dmf = ((d.mf-dl.mf)/dl.mf*100).toFixed(1);
                       const dk  = ((d.k -dl.k )/dl.k *100).toFixed(1);
                       return (
