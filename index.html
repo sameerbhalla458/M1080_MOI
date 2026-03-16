@@ -50,14 +50,14 @@ const DEG = Math.PI / 180;
 //   foot  : heel → toe II
 const SEG_DATA = {
   //           mf       lf      cf      k      label
-  head:  { mf:0.0694, lf:0.130, cf:0.500, k:0.303, label:"Head + Neck"   },
+  head:  { mf:0.0694, lf:0.130, cf:0.500, k:0.303, label:"Head & Neck"   },
   trunk: { mf:0.4346, lf:0.300, cf:0.500, k:0.328, label:"Trunk"         },
-  uArm:  { mf:0.0271, lf:0.170, cf:0.577, k:0.285, label:"Upper Arms x2" },
-  fArm:  { mf:0.0162, lf:0.146, cf:0.457, k:0.276, label:"Forearms x2"   },
-  hand:  { mf:0.0061, lf:0.058, cf:0.790, k:0.513, label:"Hands x2"      },
-  thigh: { mf:0.1000, lf:0.245, cf:0.410, k:0.329, label:"Thighs x2"     },
-  shank: { mf:0.0465, lf:0.246, cf:0.446, k:0.255, label:"Shanks x2"     },
-  foot:  { mf:0.0145, lf:0.152, cf:0.401, k:0.257, label:"Feet x2"       },
+  uArm:  { mf:0.0271, lf:0.170, cf:0.577, k:0.285, label:"Upper Arms ×2" },
+  fArm:  { mf:0.0162, lf:0.146, cf:0.457, k:0.276, label:"Forearms ×2"   },
+  hand:  { mf:0.0061, lf:0.058, cf:0.790, k:0.513, label:"Hands ×2"      },
+  thigh: { mf:0.1000, lf:0.245, cf:0.410, k:0.329, label:"Thighs ×2"     },
+  shank: { mf:0.0465, lf:0.246, cf:0.446, k:0.255, label:"Lower Legs ×2"     },
+  foot:  { mf:0.0145, lf:0.152, cf:0.401, k:0.257, label:"Feet ×2"       },
 };
 
 // ─── Dumas, Chèze & Verriest (2007) Male Segment Parameters ──────────────────
@@ -74,14 +74,14 @@ const SEG_DATA = {
 //
 // Same parameter definitions as De Leva (mf, lf, cf, k) for direct comparison.
 const SEG_DATA_DUMAS = {
-  head:  { mf:0.0668, lf:0.1307, cf:0.5002, k:0.3030, label:"Head + Neck"   },
+  head:  { mf:0.0668, lf:0.1307, cf:0.5002, k:0.3030, label:"Head & Neck"   },
   trunk: { mf:0.4257, lf:0.3060, cf:0.4964, k:0.3280, label:"Trunk"         },
-  uArm:  { mf:0.0255, lf:0.1859, cf:0.5722, k:0.2690, label:"Upper Arms x2" },
-  fArm:  { mf:0.0138, lf:0.1460, cf:0.4574, k:0.2610, label:"Forearms x2"   },
-  hand:  { mf:0.0056, lf:0.0572, cf:0.7474, k:0.5310, label:"Hands x2"      },
-  thigh: { mf:0.1028, lf:0.2450, cf:0.3720, k:0.3290, label:"Thighs x2"     },
-  shank: { mf:0.0427, lf:0.2460, cf:0.4416, k:0.2510, label:"Shanks x2"     },
-  foot:  { mf:0.0137, lf:0.1522, cf:0.4014, k:0.2570, label:"Feet x2"       },
+  uArm:  { mf:0.0255, lf:0.1859, cf:0.5722, k:0.2690, label:"Upper Arms ×2" },
+  fArm:  { mf:0.0138, lf:0.1460, cf:0.4574, k:0.2610, label:"Forearms ×2"   },
+  hand:  { mf:0.0056, lf:0.0572, cf:0.7474, k:0.5310, label:"Hands ×2"      },
+  thigh: { mf:0.1028, lf:0.2450, cf:0.3720, k:0.3290, label:"Thighs ×2"     },
+  shank: { mf:0.0427, lf:0.2460, cf:0.4416, k:0.2510, label:"Lower Legs ×2"     },
+  foot:  { mf:0.0137, lf:0.1522, cf:0.4014, k:0.2570, label:"Feet ×2"       },
 };
 
 // ─── De Leva (1996) FEMALE Segment Parameters ────────────────────────────────
@@ -89,14 +89,14 @@ const SEG_DATA_DUMAS = {
 // Mean age 28.6±5.7 yr, mass 61.9±8.8 kg, height 160.9±6.1 cm.
 // Notable: thigh mf=0.1478 vs male 0.1000 (+48%) — largest inter-sex difference.
 const SEG_DATA_F = {
-  head:  { mf:0.0668, lf:0.1307, cf:0.5050, k:0.2710, label:"Head + Neck"   },
+  head:  { mf:0.0668, lf:0.1307, cf:0.5050, k:0.2710, label:"Head & Neck"   },
   trunk: { mf:0.4257, lf:0.2904, cf:0.4928, k:0.3070, label:"Trunk"         },
-  uArm:  { mf:0.0255, lf:0.1730, cf:0.5754, k:0.2780, label:"Upper Arms x2" },
-  fArm:  { mf:0.0138, lf:0.1463, cf:0.4559, k:0.2610, label:"Forearms x2"   },
-  hand:  { mf:0.0056, lf:0.0581, cf:0.7474, k:0.5310, label:"Hands x2"      },
-  thigh: { mf:0.1478, lf:0.2454, cf:0.3713, k:0.3690, label:"Thighs x2"     },
-  shank: { mf:0.0481, lf:0.2459, cf:0.4415, k:0.2670, label:"Shanks x2"     },
-  foot:  { mf:0.0129, lf:0.1522, cf:0.4014, k:0.2990, label:"Feet x2"       },
+  uArm:  { mf:0.0255, lf:0.1730, cf:0.5754, k:0.2780, label:"Upper Arms ×2" },
+  fArm:  { mf:0.0138, lf:0.1463, cf:0.4559, k:0.2610, label:"Forearms ×2"   },
+  hand:  { mf:0.0056, lf:0.0581, cf:0.7474, k:0.5310, label:"Hands ×2"      },
+  thigh: { mf:0.1478, lf:0.2454, cf:0.3713, k:0.3690, label:"Thighs ×2"     },
+  shank: { mf:0.0481, lf:0.2459, cf:0.4415, k:0.2670, label:"Lower Legs ×2"     },
+  foot:  { mf:0.0129, lf:0.1522, cf:0.4014, k:0.2990, label:"Feet ×2"       },
 };
 
 // ─── Dumas et al. (2007) FEMALE Segment Parameters ───────────────────────────
@@ -106,14 +106,14 @@ const SEG_DATA_F = {
 //   Stereophotogrammetry on n=24 living adult females.
 //   Dumas re-expressed with joint-centre landmarks (same paper, Table 3).
 const SEG_DATA_DUMAS_F = {
-  head:  { mf:0.0668, lf:0.1307, cf:0.5002, k:0.2710, label:"Head + Neck"   },
+  head:  { mf:0.0668, lf:0.1307, cf:0.5002, k:0.2710, label:"Head & Neck"   },
   trunk: { mf:0.4257, lf:0.3060, cf:0.4964, k:0.3070, label:"Trunk"         },
-  uArm:  { mf:0.0255, lf:0.1730, cf:0.5722, k:0.2780, label:"Upper Arms x2" },
-  fArm:  { mf:0.0138, lf:0.1460, cf:0.4574, k:0.2610, label:"Forearms x2"   },
-  hand:  { mf:0.0056, lf:0.0572, cf:0.7474, k:0.5310, label:"Hands x2"      },
-  thigh: { mf:0.1478, lf:0.2450, cf:0.3720, k:0.3690, label:"Thighs x2"     },
-  shank: { mf:0.0481, lf:0.2460, cf:0.4416, k:0.2670, label:"Shanks x2"     },
-  foot:  { mf:0.0129, lf:0.1522, cf:0.4014, k:0.2990, label:"Feet x2"       },
+  uArm:  { mf:0.0255, lf:0.1730, cf:0.5722, k:0.2780, label:"Upper Arms ×2" },
+  fArm:  { mf:0.0138, lf:0.1460, cf:0.4574, k:0.2610, label:"Forearms ×2"   },
+  hand:  { mf:0.0056, lf:0.0572, cf:0.7474, k:0.5310, label:"Hands ×2"      },
+  thigh: { mf:0.1478, lf:0.2450, cf:0.3720, k:0.3690, label:"Thighs ×2"     },
+  shank: { mf:0.0481, lf:0.2460, cf:0.4416, k:0.2670, label:"Lower Legs ×2"     },
+  foot:  { mf:0.0129, lf:0.1522, cf:0.4014, k:0.2990, label:"Feet ×2"       },
 };
 
 // ─── Dataset selector — returns correct pair based on gender ─────────────────
@@ -138,9 +138,11 @@ const W_DELEVA = 5, W_DUMAS = 2, W_TOTAL = W_DELEVA + W_DUMAS;
 
 // ─── Kinematics (sagittal plane X–Z) ─────────────────────────────────────────
 // Parameterised by segData so it works with both De Leva and Dumas datasets.
+// sep = { legSep, armSep } — lateral half-width in metres (measured values, not fractions).
 // All segment positions relative to HIP JOINT (trochanter). Angles in degrees.
-function computePosture(M, H, ang, segData) {
+function computePosture(M, H, ang, segData, sep) {
   const { trunkLean, thighAngle, kneeAngle, shoulderAngle, elbowAngle, footAngle } = ang;
+  const { legSep, armSep } = sep;
   const SD = segData;
   const L = {};
   for (const [id, d] of Object.entries(SD)) L[id] = d.lf * H;
@@ -180,14 +182,14 @@ function computePosture(M, H, ang, segData) {
   const footCom = { x:anklePos.x + L.foot*SD.foot.cf*Math.cos(pFt), z:anklePos.z + L.foot*SD.foot.cf*Math.sin(pFt) };
 
   const segs = [
-    { id:"trunk", com:trunkCom, m:SD.trunk.mf*M, L:L.trunk, k:SD.trunk.k, y:0,              n:1 },
-    { id:"head",  com:headCom,  m:SD.head.mf *M, L:L.head,  k:SD.head.k,  y:0,              n:1 },
-    { id:"uArm",  com:uArmCom,  m:SD.uArm.mf *M, L:L.uArm,  k:SD.uArm.k,  y:Y_FRAC.uArm *H, n:2 },
-    { id:"fArm",  com:fArmCom,  m:SD.fArm.mf *M, L:L.fArm,  k:SD.fArm.k,  y:Y_FRAC.fArm *H, n:2 },
-    { id:"hand",  com:handCom,  m:SD.hand.mf *M, L:L.hand,  k:SD.hand.k,  y:Y_FRAC.hand *H, n:2 },
-    { id:"thigh", com:thighCom, m:SD.thigh.mf*M, L:L.thigh, k:SD.thigh.k, y:Y_FRAC.thigh*H, n:2 },
-    { id:"shank", com:shankCom, m:SD.shank.mf*M, L:L.shank, k:SD.shank.k, y:Y_FRAC.shank*H, n:2 },
-    { id:"foot",  com:footCom,  m:SD.foot.mf *M, L:L.foot,  k:SD.foot.k,  y:Y_FRAC.foot *H, n:2 },
+    { id:"head",  com:headCom,  m:SD.head.mf *M, L:L.head,  k:SD.head.k,  y:0,       n:1 },
+    { id:"trunk", com:trunkCom, m:SD.trunk.mf*M, L:L.trunk, k:SD.trunk.k, y:0,       n:1 },
+    { id:"uArm",  com:uArmCom,  m:SD.uArm.mf *M, L:L.uArm,  k:SD.uArm.k,  y:armSep,  n:2 },
+    { id:"fArm",  com:fArmCom,  m:SD.fArm.mf *M, L:L.fArm,  k:SD.fArm.k,  y:armSep,  n:2 },
+    { id:"hand",  com:handCom,  m:SD.hand.mf *M, L:L.hand,  k:SD.hand.k,  y:armSep,  n:2 },
+    { id:"thigh", com:thighCom, m:SD.thigh.mf*M, L:L.thigh, k:SD.thigh.k, y:legSep,  n:2 },
+    { id:"shank", com:shankCom, m:SD.shank.mf*M, L:L.shank, k:SD.shank.k, y:legSep,  n:2 },
+    { id:"foot",  com:footCom,  m:SD.foot.mf *M, L:L.foot,  k:SD.foot.k,  y:legSep,  n:2 },
   ];
   return { segs, joints:{ C7, elbowPos, wristPos, kneePos, anklePos, footTip }, L };
 }
@@ -223,6 +225,240 @@ function toSVG(p, hipPX, hipPZ, scale) {
   return { x: hipPX + p.x*scale, y: hipPZ - p.z*scale };
 }
 
+// ─── Front View Component (Y–Z plane) ────────────────────────────────────────
+// ─── Front View Component (Y–Z plane) ────────────────────────────────────────
+// Represents a seated person viewed from the front.
+// Key design decisions:
+//   • Thighs diverge from hip CENTRE (Y=0) outward to knee (Y=±legSep).
+//     This correctly shows the seated thigh going forward (X) and outward (Y).
+//     When thighAngle≈0°, knee_Z ≈ hip_Z → thigh appears nearly horizontal ✓
+//   • Forearm shown going slightly OUTWARD from elbow (in +Y), representing the
+//     forearm going forward into the sagittal plane. Avoids the unnatural
+//     upward-pointing forearm artifact that occurs when wrist_Z > elbow_Z.
+//   • Seat line drawn at hip Z=0 as context for the viewer.
+// ─── Front View Component (Y–Z plane) ────────────────────────────────────────
+// PROJECTION RULE: Every point drawn at (Y, Z) where:
+//   Y = lateral offset (legSep or armSep, 0 for midline) — from slider
+//   Z = sagittal Z coordinate from kinematics — same value used for CoM dots
+// This guarantees skeleton lines and CoM dots are always consistent.
+//
+// Thighs diverge from hip CENTRE (Y=0) to knee (Y=±legSep, Z=kneePos.z).
+// This correctly represents the outward + forward spread of a seated thigh.
+// ─── Front View Component (Y–Z plane) ────────────────────────────────────────
+// PROJECTION: pure Y-Z orthographic (looking down +X axis / from the front).
+//
+// Bilateral segments (arms, legs): Y=±offset (constant along segment in 3D),
+// Z from sagittal kinematics. CoM dots are thus at (Y=±s.y, Z=s.com.z) — the
+// correct Y-Z projection of the 3D CoM position.
+//
+// THIGH: drawn from the ACTUAL hip joint (±legSep, 0) to knee (±legSep, kneeZ).
+// This is anatomically correct — the hip joint IS at ±legSep laterally.
+// When the thigh is nearly horizontal (thighAngle≈0), the thigh barely moves in Z
+// and a depth hint arrow shows it extends forward into the page (X direction).
+function FrontView({ joints, segs, legSep, armSep, originZ, L, dlData, panel, secTit, SCALE, SVG_H }) {
+  const FW    = 220;
+  const fHipZ = Math.round(SVG_H * 0.67);
+  const fCX   = FW / 2;
+  const fv    = (y, z) => ({ x: fCX + y*SCALE, y: fHipZ - z*SCALE });
+
+  const { C7, kneePos, anklePos, footTip, elbowPos, wristPos } = joints;
+  const headZ  = C7.z + L.head * dlData.head.cf;
+  const headR2 = Math.max(L.head * 0.42 * SCALE, 10);
+  const fOrig  = fv(0, originZ);
+
+  // Midline
+  const hipC  = fv(0, 0);
+  const trk   = fv(0, C7.z);
+  const headC = fv(0, headZ);
+
+  // Arms
+  const shlL = fv(-armSep, C7.z);       const shlR = fv( armSep, C7.z);
+  const elbL = fv(-armSep, elbowPos.z);  const elbR = fv( armSep, elbowPos.z);
+  const wriL = fv(-armSep, wristPos.z);  const wriR = fv( armSep, wristPos.z);
+
+  // Legs — anchored at actual hip joint positions (±legSep, 0)
+  const hipL = fv(-legSep, 0);          const hipR = fv( legSep, 0);
+  const kneL = fv(-legSep, kneePos.z);  const kneR = fv( legSep, kneePos.z);
+  const ankL = fv(-legSep, anklePos.z); const ankR = fv( legSep, anklePos.z);
+  const ftL  = fv(-legSep, footTip.z);  const ftR  = fv( legSep, footTip.z);
+
+  // Show depth hint when thigh is nearly horizontal (<18 px vertical travel)
+  const thighVertPx  = Math.abs(kneL.y - hipL.y);
+  const showDepth    = thighVertPx < 18;
+  const dLen         = 13;
+
+  return (
+    <div style={{ ...panel, padding:"12px" }}>
+      <div style={secTit}>FRONT  (Y–Z)</div>
+      <svg width={FW} height={SVG_H}>
+
+        {/* Grid */}
+        {[-0.6,-0.3,0,0.3,0.6,0.9,1.2].map(v=>(
+          <line key={"fgz"+v} x1={0} y1={fHipZ-v*SCALE} x2={FW} y2={fHipZ-v*SCALE}
+                stroke="#0d1a2e" strokeWidth="1"/>
+        ))}
+        {[-0.3,0,0.3].map(v=>(
+          <line key={"fgy"+v} x1={fCX+v*SCALE} y1={0} x2={fCX+v*SCALE} y2={SVG_H}
+                stroke="#0d1a2e" strokeWidth="1"/>
+        ))}
+
+        <defs>
+          <marker id="farrY" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto">
+            <path d="M0,1 L6,3.5 L0,6 Z" fill="#22c55e"/>
+          </marker>
+          <marker id="farrFZ" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto">
+            <path d="M0,1 L6,3.5 L0,6 Z" fill="#22c55e"/>
+          </marker>
+          <marker id="fdepth" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+            <path d="M0,1 L5,3 L0,5 Z" fill="#38bdf8" opacity="0.55"/>
+          </marker>
+        </defs>
+
+        {/* Axis arrows */}
+        <line x1={fOrig.x} y1={fOrig.y} x2={fOrig.x+48} y2={fOrig.y}
+              stroke="#22c55e" strokeWidth="1.8" markerEnd="url(#farrY)"/>
+        <line x1={fOrig.x} y1={fOrig.y} x2={fOrig.x} y2={fOrig.y-48}
+              stroke="#22c55e" strokeWidth="1.8" markerEnd="url(#farrFZ)"/>
+        <text x={fOrig.x+51} y={fOrig.y+4}  fontSize="9" fill="#22c55e" fontWeight="bold">Y</text>
+        <text x={fOrig.x+3}  y={fOrig.y-51} fontSize="9" fill="#22c55e" fontWeight="bold">Z</text>
+        <circle cx={fOrig.x} cy={fOrig.y} r={4} fill="#22c55e" opacity="0.9"/>
+
+        {/* Seat reference line */}
+        <line x1={fv(-legSep-0.06,0).x} y1={hipC.y} x2={fv(legSep+0.06,0).x} y2={hipC.y}
+              stroke="#1e2d47" strokeWidth="1.5" strokeDasharray="5,3"/>
+
+        {/* ── Trunk ── */}
+        <line x1={hipC.x} y1={hipC.y} x2={trk.x} y2={trk.y}
+              stroke="#f59e0b" strokeWidth="8" strokeLinecap="round"/>
+
+        {/* ── Shoulder bar ── */}
+        <line x1={shlL.x} y1={shlL.y} x2={shlR.x} y2={shlR.y}
+              stroke="#fb923c" strokeWidth="5" strokeLinecap="round"/>
+
+        {/* ── Arms ── */}
+        <line x1={shlL.x} y1={shlL.y} x2={elbL.x} y2={elbL.y}
+              stroke="#fb923c" strokeWidth="5" strokeLinecap="round"/>
+        <line x1={elbL.x} y1={elbL.y} x2={wriL.x} y2={wriL.y}
+              stroke="#fb923c" strokeWidth="3" strokeLinecap="round"/>
+        <circle cx={elbL.x} cy={elbL.y} r={5} fill="#fb923c" stroke="#0d1425" strokeWidth="1.5"/>
+        <line x1={shlR.x} y1={shlR.y} x2={elbR.x} y2={elbR.y}
+              stroke="#fb923c" strokeWidth="5" strokeLinecap="round"/>
+        <line x1={elbR.x} y1={elbR.y} x2={wriR.x} y2={wriR.y}
+              stroke="#fb923c" strokeWidth="3" strokeLinecap="round"/>
+        <circle cx={elbR.x} cy={elbR.y} r={5} fill="#fb923c" stroke="#0d1425" strokeWidth="1.5"/>
+
+        {/* ── Hip bar — connects actual hip joints ── */}
+        <line x1={hipL.x} y1={hipL.y} x2={hipR.x} y2={hipR.y}
+              stroke="#f59e0b" strokeWidth="5" strokeLinecap="round"/>
+
+        {/* ── Thighs — from hip joint (±legSep,0) to knee ── */}
+        <line x1={hipL.x} y1={hipL.y} x2={kneL.x} y2={kneL.y}
+              stroke="#38bdf8" strokeWidth="7" strokeLinecap="round"/>
+        <line x1={hipR.x} y1={hipR.y} x2={kneR.x} y2={kneR.y}
+              stroke="#38bdf8" strokeWidth="7" strokeLinecap="round"/>
+
+        {/* Depth hint when thigh is mostly horizontal */}
+        {showDepth && (<>
+          <line x1={hipL.x+2} y1={hipL.y-3} x2={hipL.x+dLen} y2={hipL.y-dLen}
+                stroke="#38bdf8" strokeWidth="1.2" strokeDasharray="3,2" opacity="0.55"
+                markerEnd="url(#fdepth)"/>
+          <line x1={hipR.x-2} y1={hipR.y-3} x2={hipR.x-dLen} y2={hipR.y-dLen}
+                stroke="#38bdf8" strokeWidth="1.2" strokeDasharray="3,2" opacity="0.55"
+                markerEnd="url(#fdepth)"/>
+          <text x={fCX} y={hipC.y-dLen-7} fontSize="7" fill="#38bdf8"
+                textAnchor="middle" opacity="0.65">thighs extend in +X</text>
+        </>)}
+
+        {/* ── Lower Legs ── */}
+        <line x1={kneL.x} y1={kneL.y} x2={ankL.x} y2={ankL.y}
+              stroke="#38bdf8" strokeWidth="4" strokeLinecap="round"/>
+        <line x1={kneR.x} y1={kneR.y} x2={ankR.x} y2={ankR.y}
+              stroke="#38bdf8" strokeWidth="4" strokeLinecap="round"/>
+
+        {/* ── Feet ── */}
+        <line x1={ankL.x} y1={ankL.y} x2={ftL.x} y2={ftL.y}
+              stroke="#38bdf8" strokeWidth="3" strokeLinecap="round"/>
+        <line x1={ankR.x} y1={ankR.y} x2={ftR.x} y2={ftR.y}
+              stroke="#38bdf8" strokeWidth="3" strokeLinecap="round"/>
+
+        {/* ── Hip joint dots (left, centre-pelvis, right) ── */}
+        {[hipL, hipC, hipR].map((p,i)=>(
+          <g key={"hip"+i}>
+            <circle cx={p.x} cy={p.y} r={i===1?12:10} fill="rgba(0,0,0,0.35)"/>
+            <circle cx={p.x} cy={p.y} r={i===1? 8: 6} fill="#f59e0b"
+                    stroke="#0d1425" strokeWidth="1.5"/>
+          </g>
+        ))}
+        <text x={hipC.x+13} y={hipC.y+4} fontSize="8" fill="#f59e0b" letterSpacing="1">HIP</text>
+
+        {/* ── Knee and ankle joint dots ── */}
+        {[{p:kneL,r:6},{p:kneR,r:6},{p:ankL,r:4},{p:ankR,r:4}].map((d,i)=>(
+          <g key={"jt"+i}>
+            <circle cx={d.p.x} cy={d.p.y} r={d.r+2} fill="rgba(0,0,0,0.35)"/>
+            <circle cx={d.p.x} cy={d.p.y} r={d.r}   fill="#38bdf8"
+                    stroke="#0d1425" strokeWidth="1.5"/>
+          </g>
+        ))}
+
+        {/* ── Head ── */}
+        <circle cx={headC.x} cy={headC.y} r={headR2+3} fill="rgba(0,0,0,0.3)"/>
+        <circle cx={headC.x} cy={headC.y} r={headR2}   fill="#0d1a2e"
+                stroke="#f59e0b" strokeWidth="5"/>
+
+        {/* ── Segment CoM dots ──────────────────────────────────────────────
+             (Y=±s.y, Z=s.com.z) — correct Y-Z projection of 3D CoM.
+             For the thigh: Y=±legSep, Z=thighCom.z.  When thigh is near-
+             horizontal, thighCom.z≈0 so dot appears at hip bar level on
+             each side — which IS the correct projected position.             ── */}
+        {segs.flatMap((s,idx)=>{
+          const ys = s.n===2 ? [-s.y, s.y] : [0];
+          return ys.map((yv,j)=>{
+            const p = fv(yv, s.com.z);
+            return (
+              <g key={idx+"-"+j}>
+                <circle cx={p.x} cy={p.y} r={6}   fill="rgba(16,185,129,0.12)"/>
+                <circle cx={p.x} cy={p.y} r={2.8}  fill="rgba(16,185,129,0.95)"
+                        stroke="rgba(16,185,129,0.3)" strokeWidth="1"/>
+              </g>
+            );
+          });
+        })}
+
+        {/* ── Leg width bracket ── */}
+        {(()=>{
+          const lx=hipL.x, rx=hipR.x, by=hipC.y+22;
+          return (<>
+            <line x1={lx} y1={hipC.y+4}  x2={lx} y2={by+5}  stroke="#38bdf8" strokeWidth="1" opacity="0.5"/>
+            <line x1={rx} y1={hipC.y+4}  x2={rx} y2={by+5}  stroke="#38bdf8" strokeWidth="1" opacity="0.5"/>
+            <line x1={lx} y1={by+2}       x2={rx} y2={by+2}  stroke="#38bdf8" strokeWidth="1" opacity="0.5"/>
+            <text x={(lx+rx)/2} y={by+12} fontSize="8" fill="#38bdf8" textAnchor="middle">
+              {(legSep*200).toFixed(0)} cm
+            </text>
+          </>);
+        })()}
+
+        {/* ── Arm width bracket ── */}
+        {(()=>{
+          const lx=shlL.x, rx=shlR.x, ty=trk.y-20;
+          return (<>
+            <line x1={lx} y1={trk.y-4}  x2={lx} y2={ty-3}  stroke="#fb923c" strokeWidth="1" opacity="0.5"/>
+            <line x1={rx} y1={trk.y-4}  x2={rx} y2={ty-3}  stroke="#fb923c" strokeWidth="1" opacity="0.5"/>
+            <line x1={lx} y1={ty}        x2={rx} y2={ty}    stroke="#fb923c" strokeWidth="1" opacity="0.5"/>
+            <text x={(lx+rx)/2} y={ty-5} fontSize="8" fill="#fb923c" textAnchor="middle">
+              {(armSep*200).toFixed(0)} cm
+            </text>
+          </>);
+        })()}
+
+        {/* Legend */}
+        <circle cx={FW-46} cy={SVG_H-14} r={3} fill="rgba(16,185,129,0.9)"/>
+        <text   x={FW-40}  y={SVG_H-10}  fontSize="8" fill="#4ade80">CoM</text>
+      </svg>
+    </div>
+  );
+}
+
+
 // ─── App ─────────────────────────────────────────────────────────────────────
 function App() {
   const [mass,     setMass]     = useState(80);
@@ -236,6 +472,9 @@ function App() {
   // Axis origin position in hip-centred frame [metres]
   const [originX, setOriginX] = useState(0.00);  // + = forward from hip
   const [originZ, setOriginZ] = useState(0.00);  // + = up from hip
+  // Lateral separation — half-width in metres (centre to limb centreline)
+  const [legSep, setLegSep] = useState(0.16);   // ~0.09×1.75m default
+  const [armSep, setArmSep] = useState(0.23);   // ~0.13×1.75m default
 
   const height = heightCm / 100;
   const setAngle = (key, val) => setAng(prev => ({ ...prev, [key]: Number(val) }));
@@ -245,8 +484,8 @@ function App() {
 
   // De Leva dataset (used for stick figure — primary reference)
   const { segs, joints, L } = useMemo(
-    () => computePosture(mass, height, ang, dlData),
-    [mass, height, ang, gender]
+    () => computePosture(mass, height, ang, dlData, { legSep, armSep }),
+    [mass, height, ang, gender, legSep, armSep]
   );
   const moiDL = useMemo(
     () => computeMOI(segs, originX, originZ),
@@ -255,8 +494,8 @@ function App() {
 
   // Dumas 2007 dataset
   const { segs: segsDumas } = useMemo(
-    () => computePosture(mass, height, ang, duData),
-    [mass, height, ang, gender]
+    () => computePosture(mass, height, ang, duData, { legSep, armSep }),
+    [mass, height, ang, gender, legSep, armSep]
   );
   const moiDumas = useMemo(
     () => computeMOI(segsDumas, originX, originZ),
@@ -315,7 +554,7 @@ function App() {
   const panel   = { background:"#111827", borderRadius:"8px", border:"1px solid #1e2d47", padding:"16px" };
   const secTit  = { fontFamily:"'Courier New',monospace", fontSize:"10px", letterSpacing:"2.5px",
                     color:"#f59e0b", textTransform:"uppercase", marginBottom:"12px" };
-  const hint    = { fontSize:"9px", color:"#374151", marginLeft:"6px" };
+  const hint    = { fontSize:"9px", color:"#4b5a70", marginLeft:"6px" };
 
   return (
     <div style={{ fontFamily:"'Courier New',monospace", background:"#080f1e", color:"#e2e8f0", minHeight:"100vh", padding:"20px" }}>
@@ -335,9 +574,15 @@ function App() {
       {/* ── Main row ── */}
       <div style={{ display:"flex", gap:"16px", flexWrap:"wrap" }}>
 
-        {/* ── Stick Figure SVG ── */}
-        <div style={{ ...panel, flexShrink:0 }}>
-          <div style={secTit}>SAGITTAL VIEW  (X–Z PLANE)</div>
+        {/* ── Stick Figure SVGs ── */}
+        <div style={{ display:"flex", flexDirection:"column", gap:"10px", flexShrink:0 }}>
+
+          {/* Sagittal + Front side by side */}
+          <div style={{ display:"flex", gap:"10px" }}>
+
+          {/* SAGITTAL VIEW (X–Z) */}
+          <div style={{ ...panel, padding:"12px" }}>
+          <div style={secTit}>SAGITTAL  (X–Z)</div>
           <svg width={SVG_W} height={SVG_H}>
 
             {/* Background grid */}
@@ -354,7 +599,7 @@ function App() {
                     stroke="#a855f7" strokeWidth="1" strokeDasharray="4,3" opacity="0.5"/>
             )}
 
-            {/* ── Moving axis arrows (drawn at origin position) ── */}
+            {/* ── Moving axis arrows ── */}
             <defs>
               <marker id="arrX" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto">
                 <path d="M0,1 L6,3.5 L0,6 Z" fill="#22c55e"/>
@@ -363,16 +608,12 @@ function App() {
                 <path d="M0,1 L6,3.5 L0,6 Z" fill="#22c55e"/>
               </marker>
             </defs>
-            {/* X-axis arrow */}
             <line x1={originPx.x} y1={originPx.y} x2={originPx.x+70} y2={originPx.y}
                   stroke="#22c55e" strokeWidth="1.8" markerEnd="url(#arrX)"/>
-            {/* Z-axis arrow */}
             <line x1={originPx.x} y1={originPx.y} x2={originPx.x} y2={originPx.y-70}
                   stroke="#22c55e" strokeWidth="1.8" markerEnd="url(#arrZ)"/>
             <text x={originPx.x+74} y={originPx.y+4}  fontSize="9" fill="#22c55e" fontWeight="bold">X</text>
             <text x={originPx.x+4}  y={originPx.y-73} fontSize="9" fill="#22c55e" fontWeight="bold">Z</text>
-
-            {/* Origin dot */}
             <circle cx={originPx.x} cy={originPx.y} r={4} fill="#22c55e" opacity="0.9"/>
             <text x={originPx.x+10} y={originPx.y-6} fontSize="8" fill="#22c55e" letterSpacing="1">0,0,0</text>
 
@@ -403,13 +644,24 @@ function App() {
 
             {/* Legend */}
             <circle cx={14}  cy={SVG_H-24} r={3}  fill="rgba(16,185,129,0.85)"/>
-            <text   x={22}   y={SVG_H-20}  fontSize="8" fill="#4ade80">Seg. CoM</text>
-            <circle cx={85}  cy={SVG_H-24} r={4}  fill="#22c55e"/>
-            <text   x={94}   y={SVG_H-20}  fontSize="8" fill="#22c55e">Origin</text>
-            <circle cx={148} cy={SVG_H-24} r={4}  fill="#f59e0b"/>
-            <text   x={157}  y={SVG_H-20}  fontSize="8" fill="#94a3b8">Joint</text>
+            <text   x={22}   y={SVG_H-20}  fontSize="8" fill="#4ade80">CoM</text>
+            <circle cx={62}  cy={SVG_H-24} r={4}  fill="#22c55e"/>
+            <text   x={71}   y={SVG_H-20}  fontSize="8" fill="#22c55e">Origin</text>
+            <circle cx={130} cy={SVG_H-24} r={4}  fill="#f59e0b"/>
+            <text   x={139}  y={SVG_H-20}  fontSize="8" fill="#94a3b8">Joint</text>
           </svg>
-        </div>
+          </div>
+
+          {/* FRONT VIEW (Y–Z) */}
+          <FrontView
+            joints={joints} segs={segs} legSep={legSep} armSep={armSep}
+            ang={ang} originZ={originZ} L={L} dlData={dlData}
+            panel={panel} secTit={secTit}
+            SCALE={SCALE} SVG_H={SVG_H}
+          />
+
+          </div>{/* end side-by-side */}
+        </div>{/* end SVG column */}
 
         {/* ── Right column ── */}
         <div style={{ flex:1, minWidth:"280px", display:"flex", flexDirection:"column", gap:"14px" }}>
@@ -423,7 +675,6 @@ function App() {
               {[{v:'M',label:'♂  MALE'},{v:'F',label:'♀  FEMALE'}].map(g=>(
                 <button key={g.v} onClick={()=>{
                   setGender(g.v);
-                  // Reset mass/height to typical population mean for selected gender
                   if(g.v==='M'){ setMass(75); setHeightCm(175); }
                   else         { setMass(62); setHeightCm(161); }
                 }} style={{
@@ -442,13 +693,13 @@ function App() {
                 { label:"Height",    value:heightCm, set:setHeightCm, min:140, max:215, unit:"cm" },
               ].map(inp=>(
                 <div key={inp.label}>
-                  <div style={{ fontSize:"9px", color:"#64748b", letterSpacing:"1.5px", marginBottom:"5px" }}>
+                  <div style={{ fontSize:"9px", color:"#64748b", letterSpacing:"1.8px", marginBottom:"6px", fontFamily:"'Courier New',monospace" }}>
                     {inp.label.toUpperCase()}
                   </div>
                   <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
                     <input type="range" min={inp.min} max={inp.max} step={1} value={inp.value}
-                           onChange={e=>inp.set(Number(e.target.value))} style={{ flex:1, accentColor:"#f59e0b" }}/>
-                    <span style={{ color:"#10b981", fontSize:"16px", fontWeight:"bold", minWidth:"58px", textAlign:"right" }}>
+                           onChange={e=>inp.set(Number(e.target.value))} style={{ flex:1, accentColor:"#60a5fa" }}/>
+                    <span style={{ color:"#e2e8f0", fontSize:"15px", fontWeight:"600", minWidth:"58px", textAlign:"right", fontFamily:"'Courier New',monospace" }}>
                       {inp.value}<span style={{ fontSize:"10px", color:"#64748b" }}> {inp.unit}</span>
                     </span>
                   </div>
@@ -481,15 +732,15 @@ function App() {
                   <span style={{ fontSize:"10px", color:"#94a3b8" }}>
                     {inp.label}<span style={hint}>{inp.hint}</span>
                   </span>
-                  <span style={{ color:inp.color, fontSize:"15px", fontWeight:"bold", minWidth:"68px", textAlign:"right" }}>
+                  <span style={{ color:"#e2e8f0", fontSize:"15px", fontWeight:"600", minWidth:"68px", textAlign:"right", fontFamily:"'Courier New',monospace" }}>
                     {inp.val>=0?"+":""}{inp.val.toFixed(2)}<span style={{ fontSize:"10px", color:"#64748b" }}> m</span>
                   </span>
                 </div>
                 <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
-                  <span style={{ fontSize:"8px", color:"#374151", minWidth:"30px" }}>-0.50</span>
+                  <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"30px" }}>-0.50</span>
                   <input type="range" min={-0.50} max={0.50} step={0.01} value={inp.val}
-                         onChange={e=>inp.set(Number(e.target.value))} style={{ flex:1, accentColor:"#22c55e" }}/>
-                  <span style={{ fontSize:"8px", color:"#374151", minWidth:"30px", textAlign:"right" }}>+0.50</span>
+                         onChange={e=>inp.set(Number(e.target.value))} style={{ flex:1, accentColor:"#60a5fa" }}/>
+                  <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"30px", textAlign:"right" }}>+0.50</span>
                 </div>
               </div>
             ))}
@@ -511,18 +762,50 @@ function App() {
                   <span style={{ fontSize:"10px", color:"#94a3b8" }}>
                     {sl.label}<span style={hint}>{sl.hint}</span>
                   </span>
-                  <span style={{ color:"#f59e0b", fontSize:"14px", fontWeight:"bold", minWidth:"50px", textAlign:"right" }}>
+                  <span style={{ color:"#e2e8f0", fontSize:"15px", fontWeight:"600", minWidth:"50px", textAlign:"right", fontFamily:"'Courier New',monospace" }}>
                     {ang[sl.key].toFixed(0)}&deg;
                   </span>
                 </div>
                 <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
-                  <span style={{ fontSize:"8px", color:"#374151", minWidth:"22px" }}>{sl.min}</span>
+                  <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"22px" }}>{sl.min}</span>
                   <input type="range" min={sl.min} max={sl.max} step={1} value={ang[sl.key]}
-                         onChange={e=>setAngle(sl.key,e.target.value)} style={{ flex:1, accentColor:"#f59e0b" }}/>
-                  <span style={{ fontSize:"8px", color:"#374151", minWidth:"22px", textAlign:"right" }}>{sl.max}</span>
+                         onChange={e=>setAngle(sl.key,e.target.value)} style={{ flex:1, accentColor:"#60a5fa" }}/>
+                  <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"22px", textAlign:"right" }}>{sl.max}</span>
                 </div>
               </div>
             ))}
+
+            {/* Lateral separation sliders — directly control roll MOI */}
+            <div style={{ marginTop:"14px", paddingTop:"10px", borderTop:"1px solid #1e2d47" }}>
+              <div style={{ fontSize:"9px", color:"#f87171", letterSpacing:"2px", marginBottom:"8px" }}>
+                LATERAL SEPARATION — ROLL MOI SENSITIVE
+              </div>
+              {[
+                { label:"Leg Separation", hint:"hip-to-hip full width", val:legSep, set:setLegSep, min:0.10, max:0.40, step:0.01, color:"#38bdf8" },
+                { label:"Arm Separation", hint:"shoulder-to-shoulder half", val:armSep, set:setArmSep, min:0.10, max:0.45, step:0.01, color:"#fb923c" },
+              ].map(sl=>(
+                <div key={sl.label} style={{ marginBottom:"10px" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"2px" }}>
+                    <span style={{ fontSize:"10px", color:"#94a3b8" }}>
+                      {sl.label}<span style={hint}>{sl.hint}</span>
+                    </span>
+                    <span style={{ color:"#e2e8f0", fontSize:"15px", fontWeight:"600", minWidth:"60px", textAlign:"right", fontFamily:"'Courier New',monospace" }}>
+                      {(sl.val*2*100).toFixed(0)}<span style={{ fontSize:"10px", color:"#64748b" }}> cm</span>
+                    </span>
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
+                    <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"28px" }}>{(sl.min*2*100).toFixed(0)}</span>
+                    <input type="range" min={sl.min} max={sl.max} step={sl.step} value={sl.val}
+                           onChange={e=>sl.set(Number(e.target.value))} style={{ flex:1, accentColor:"#60a5fa" }}/>
+                    <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"28px", textAlign:"right" }}>{(sl.max*2*100).toFixed(0)}</span>
+                  </div>
+                </div>
+              ))}
+              <div style={{ fontSize:"9px", color:"#374151", lineHeight:"1.6" }}>
+                Values shown as full width (2 × half-width). Measure with tape: hip-to-hip and shoulder-to-shoulder.
+                <span style={{ color:"#f87171" }}> Roll MOI scales as y²</span> — small separation errors matter.
+              </div>
+            </div>
           </div>
 
           {/* MOI Results */}
@@ -578,52 +861,108 @@ function App() {
 
       {/* ── Segment Breakdown ── */}
       <div style={{ ...panel, marginTop:"16px" }}>
-        <div style={secTit}>Segment Contribution Breakdown [kg·m²]</div>
-        <div style={{ overflowX:"auto" }}>
-          <table style={{ width:"100%", fontSize:"11px", borderCollapse:"collapse" }}>
-            <thead>
-              <tr style={{ borderBottom:"1px solid #1e2d47" }}>
-                <th style={{ textAlign:"left",  padding:"5px 10px", color:"#64748b", letterSpacing:"1px" }}>Segment</th>
-                <th style={{ textAlign:"right", padding:"5px 10px", color:"#f87171" }}>I_roll</th>
-                <th style={{ textAlign:"right", padding:"5px 10px", color:"#60a5fa" }}>I_pitch</th>
-                <th style={{ textAlign:"right", padding:"5px 10px", color:"#4ade80" }}>I_yaw</th>
-                <th style={{ textAlign:"right", padding:"5px 10px", color:"#94a3b8" }}>Mass</th>
-                <th style={{ textAlign:"right", padding:"5px 10px", color:"#94a3b8" }}>% Roll</th>
-              </tr>
-            </thead>
-            <tbody>
-              {moi.breakdown.map((s,i)=>{
-                const pct = moi.Iroll>0 ? s.ir/moi.Iroll*100 : 0;
-                return (
-                  <tr key={s.id} style={{ borderBottom:"1px solid #0d1425", background:i%2===0?"transparent":"rgba(255,255,255,0.01)" }}>
-                    <td style={{ padding:"5px 10px", color:"#94a3b8" }}>{SEG_DATA[s.id].label}</td>
-                    <td style={{ padding:"5px 10px", textAlign:"right", color:"#f87171" }}>{s.ir.toFixed(2)}</td>
-                    <td style={{ padding:"5px 10px", textAlign:"right", color:"#60a5fa" }}>{s.ip.toFixed(2)}</td>
-                    <td style={{ padding:"5px 10px", textAlign:"right", color:"#4ade80" }}>{s.iy.toFixed(2)}</td>
-                    <td style={{ padding:"5px 10px", textAlign:"right", color:"#64748b" }}>{s.totalMass.toFixed(1)} kg</td>
-                    <td style={{ padding:"5px 10px", textAlign:"right" }}>
-                      <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", gap:"6px" }}>
-                        <div style={{ width:"50px", background:"#0d1425", height:"4px", borderRadius:"2px" }}>
-                          <div style={{ background:"#f59e0b66", height:"4px", borderRadius:"2px", width:Math.min(pct,100).toFixed(0)+"%" }}/>
-                        </div>
-                        <span style={{ color:"#64748b", minWidth:"32px", textAlign:"right" }}>{pct.toFixed(0)}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr style={{ borderTop:"1px solid #1e2d47" }}>
-                <td style={{ padding:"7px 10px", color:"#f59e0b", fontWeight:"bold" }}>TOTAL</td>
-                <td style={{ padding:"7px 10px", textAlign:"right", color:"#f87171", fontWeight:"bold" }}>{moi.Iroll.toFixed(2)}</td>
-                <td style={{ padding:"7px 10px", textAlign:"right", color:"#60a5fa", fontWeight:"bold" }}>{moi.Ipitch.toFixed(2)}</td>
-                <td style={{ padding:"7px 10px", textAlign:"right", color:"#4ade80", fontWeight:"bold" }}>{moi.Iyaw.toFixed(2)}</td>
-                <td style={{ padding:"7px 10px", textAlign:"right", color:"#e2e8f0", fontWeight:"bold" }}>{mass.toFixed(0)} kg</td>
-                <td/>
-              </tr>
-            </tfoot>
-          </table>
+        <div style={secTit}>Segment Contribution Breakdown</div>
+
+        {/* Column header row */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 52px 52px 52px 44px", gap:"0", marginBottom:"4px",
+                      padding:"4px 10px", borderBottom:"1px solid #1e2d47" }}>
+          <span style={{ fontSize:"8px", color:"#4b5a70", letterSpacing:"1px" }}>SEGMENT</span>
+          <span style={{ fontSize:"8px", color:"#f87171", textAlign:"right", letterSpacing:"0.5px" }}>I_xx</span>
+          <span style={{ fontSize:"8px", color:"#60a5fa", textAlign:"right", letterSpacing:"0.5px" }}>I_yy</span>
+          <span style={{ fontSize:"8px", color:"#4ade80", textAlign:"right", letterSpacing:"0.5px" }}>I_zz</span>
+          <span style={{ fontSize:"8px", color:"#4b5a70", textAlign:"right", letterSpacing:"0.5px" }}>MASS</span>
+        </div>
+        <div style={{ fontSize:"7px", color:"#374151", marginBottom:"8px", padding:"0 10px" }}>
+          kg·m² &nbsp;|&nbsp; xx=Roll · yy=Pitch · zz=Yaw &nbsp;|&nbsp; De Leva (1996) reference
+        </div>
+
+        {/* Segment rows */}
+        {moi.breakdown.map((s,i)=>{
+          const pctRoll  = moi.Iroll  > 0 ? s.ir/moi.Iroll*100  : 0;
+          const pctPitch = moi.Ipitch > 0 ? s.ip/moi.Ipitch*100 : 0;
+          const maxPct   = Math.max(pctRoll, pctPitch, 0.1);
+          return (
+            <div key={s.id} style={{
+              display:"grid", gridTemplateColumns:"1fr 52px 52px 52px 44px",
+              padding:"5px 10px", borderBottom:"1px solid #080f1e",
+              background: i%2===0 ? "transparent" : "rgba(255,255,255,0.015)",
+              alignItems:"center",
+            }}>
+              {/* Segment name + bar */}
+              <div>
+                <div style={{ fontSize:"10px", color:"#94a3b8", marginBottom:"3px" }}>
+                  {dlData[s.id].label}
+                </div>
+                <div style={{ height:"3px", background:"#0d1425", borderRadius:"2px", width:"90%" }}>
+                  <div style={{ height:"3px", borderRadius:"2px",
+                                background:"linear-gradient(90deg,#f87171,#f59e0b)",
+                                width: Math.min(pctRoll,100).toFixed(1)+"%" }}/>
+                </div>
+              </div>
+              {/* I_roll */}
+              <div style={{ textAlign:"right" }}>
+                <span style={{ fontSize:"11px", color:"#f87171", fontFamily:"'Courier New',monospace", fontWeight:"600" }}>
+                  {s.ir.toFixed(2)}
+                </span>
+              </div>
+              {/* I_pitch */}
+              <div style={{ textAlign:"right" }}>
+                <span style={{ fontSize:"11px", color:"#60a5fa", fontFamily:"'Courier New',monospace", fontWeight:"600" }}>
+                  {s.ip.toFixed(2)}
+                </span>
+              </div>
+              {/* I_yaw */}
+              <div style={{ textAlign:"right" }}>
+                <span style={{ fontSize:"11px", color:"#4ade80", fontFamily:"'Courier New',monospace", fontWeight:"600" }}>
+                  {s.iy.toFixed(2)}
+                </span>
+              </div>
+              {/* Mass */}
+              <div style={{ textAlign:"right" }}>
+                <span style={{ fontSize:"10px", color:"#4b5a70", fontFamily:"'Courier New',monospace" }}>
+                  {s.totalMass.toFixed(1)}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Total row */}
+        <div style={{
+          display:"grid", gridTemplateColumns:"1fr 52px 52px 52px 44px",
+          padding:"7px 10px", borderTop:"2px solid #1e2d47",
+          background:"rgba(245,158,11,0.04)", alignItems:"center",
+        }}>
+          <div style={{ fontSize:"10px", color:"#f59e0b", fontWeight:"bold", letterSpacing:"1px" }}>
+            TOTAL
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <span style={{ fontSize:"12px", color:"#f87171", fontFamily:"'Courier New',monospace", fontWeight:"bold" }}>
+              {moi.Iroll.toFixed(2)}
+            </span>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <span style={{ fontSize:"12px", color:"#60a5fa", fontFamily:"'Courier New',monospace", fontWeight:"bold" }}>
+              {moi.Ipitch.toFixed(2)}
+            </span>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <span style={{ fontSize:"12px", color:"#4ade80", fontFamily:"'Courier New',monospace", fontWeight:"bold" }}>
+              {moi.Iyaw.toFixed(2)}
+            </span>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <span style={{ fontSize:"10px", color:"#94a3b8", fontFamily:"'Courier New',monospace" }}>
+              {mass.toFixed(0)}
+            </span>
+          </div>
+        </div>
+
+        {/* Unit legend */}
+        <div style={{ padding:"6px 10px", marginTop:"4px", fontSize:"8px", color:"#374151",
+                      display:"flex", justifyContent:"space-between" }}>
+          <span>All values in kg·m²</span>
+          <span>Mass in kg</span>
         </div>
       </div>
 
@@ -744,23 +1083,26 @@ function App() {
                       <span style={{ color:"#374151", fontSize:"9px" }}>{ax.sym} · {ax.desc}</span>
                     </div>
 
-                    {/* Equation with live coefficients */}
-                    <div style={{ background:"#080f1e", borderRadius:"5px", padding:"10px",
+                    {/* Equation — single line */}
+                    <div style={{ background:"#080f1e", borderRadius:"5px", padding:"10px 12px",
                                   marginBottom:"10px", ...mono }}>
-                      <div style={{ fontSize:"11px", color:ax.color, marginBottom:"4px" }}>
-                        I = m · (
-                      </div>
-                      <div style={{ paddingLeft:"12px", lineHeight:"2.2", fontSize:"11px" }}>
+                      {/* Line 1: I = m · ( A·H²  [+ B·H  + C] ) */}
+                      <div style={{ fontSize:"11px", display:"flex", flexWrap:"wrap",
+                                    alignItems:"baseline", gap:"3px", lineHeight:"1.9" }}>
+                        <span style={{ color:ax.color }}>I</span>
+                        <span style={{ color:"#4b5a70" }}>=</span>
+                        <span style={{ color:"#94a3b8" }}>m ·</span>
+                        <span style={{ color:"#4b5a70" }}>(</span>
                         <span style={{ color:"#f59e0b", fontWeight:"bold" }}>{fmt4(ax.A)}</span>
-                        <span style={{ color:"#64748b" }}> · H²</span>
+                        <span style={{ color:"#4b5a70" }}>·H²</span>
                         { !atHip && <>
-                          <br/>
+                          <span style={{ color:"#4b5a70" }}>+</span>
                           <span style={{ color:"#a78bfa", fontWeight:"bold" }}>{fmt2(ax.B)}</span>
-                          <span style={{ color:"#64748b" }}> · H</span>
-                          <br/>
+                          <span style={{ color:"#4b5a70" }}>·H</span>
+                          <span style={{ color:"#4b5a70" }}>+</span>
                           <span style={{ color:"#fb923c", fontWeight:"bold" }}>{fmt2(ax.C)}</span>
                         </>}
-                        <span style={{ color:ax.color }}> )</span>
+                        <span style={{ color:"#4b5a70" }}>)</span>
                       </div>
                     </div>
 
