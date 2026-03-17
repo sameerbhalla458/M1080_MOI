@@ -23,6 +23,17 @@ const { useState, useMemo } = React;
 
 // ─── Coordinate Frame: X = forward, Y = lateral (right), Z = up (RH) ─────────
 const DEG = Math.PI / 180;
+const KG_TO_LB = 2.20462;
+const M_TO_IN  = 39.3701;
+const CM_TO_IN = 0.393701;
+const lbsToKg  = lb => lb / KG_TO_LB;
+const kgToLbs  = kg => kg * KG_TO_LB;
+const cmToFtIn = cm => {
+  const tot = Math.round(cm * CM_TO_IN);
+  const ft  = Math.floor(tot / 12);
+  const ins = tot % 12;
+  return ft + String.fromCharCode(39) + String(ins).padStart(2,"0") + String.fromCharCode(34);
+};
 
 // ─── De Leva (1996) Male Segment Parameters ───────────────────────────────────
 // Source: De Leva, P. (1996). Adjustments to Zatsiorsky-Seluyanov's segment
@@ -432,7 +443,7 @@ function FrontView({ joints, segs, legSep, armSep, originZ, L, dlData, panel, se
             <line x1={rx} y1={hipC.y+4}  x2={rx} y2={by+5}  stroke="#38bdf8" strokeWidth="1" opacity="0.5"/>
             <line x1={lx} y1={by+2}       x2={rx} y2={by+2}  stroke="#38bdf8" strokeWidth="1" opacity="0.5"/>
             <text x={(lx+rx)/2} y={by+12} fontSize="8" fill="#38bdf8" textAnchor="middle">
-              {(legSep*200).toFixed(0)} cm
+              {(legSep*2*M_TO_IN).toFixed(1)}"
             </text>
           </>);
         })()}
@@ -445,7 +456,7 @@ function FrontView({ joints, segs, legSep, armSep, originZ, L, dlData, panel, se
             <line x1={rx} y1={trk.y-4}  x2={rx} y2={ty-3}  stroke="#fb923c" strokeWidth="1" opacity="0.5"/>
             <line x1={lx} y1={ty}        x2={rx} y2={ty}    stroke="#fb923c" strokeWidth="1" opacity="0.5"/>
             <text x={(lx+rx)/2} y={ty-5} fontSize="8" fill="#fb923c" textAnchor="middle">
-              {(armSep*200).toFixed(0)} cm
+              {(armSep*2*M_TO_IN).toFixed(1)}"
             </text>
           </>);
         })()}
@@ -461,8 +472,8 @@ function FrontView({ joints, segs, legSep, armSep, originZ, L, dlData, panel, se
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 function App() {
-  const [mass,     setMass]     = useState(80);
-  const [heightCm, setHeightCm] = useState(175);
+  const [mass,     setMass]     = useState(lbsToKg(176));
+  const [heightCm, setHeightCm] = useState(Math.round(69*2.54));
   const [gender,   setGender]   = useState('M');  // 'M' or 'F'
   const [showRef,  setShowRef]  = useState(false);
   const [ang, setAng] = useState({
@@ -543,12 +554,12 @@ function App() {
   ];
 
   const postureSliders = [
-    { key:"trunkLean",     label:"Trunk Lean",         min:-30, max:30,  hint:"+ back / - fwd"       },
-    { key:"thighAngle",    label:"Thigh Angle",        min:-20, max:35,  hint:"+ knee above hip"     },
-    { key:"kneeAngle",     label:"Knee Angle",         min:80,  max:165, hint:"interior"             },
-    { key:"shoulderAngle", label:"Shoulder Elevation", min:0,   max:90,  hint:"0=down / 90=horiz"    },
-    { key:"elbowAngle",    label:"Elbow Angle",        min:0,   max:160, hint:"0=straight / 90=bent" },
-    { key:"footAngle",     label:"Foot Angle",         min:-30, max:30,  hint:"+ toes up / - down"   },
+    { key:"trunkLean",     label:"Trunk Lean",         min:-45, max:45,  hint:"+ back / - fwd"       },
+    { key:"thighAngle",    label:"Thigh Angle",        min:-30, max:90,  hint:"+ knee above hip"     },
+    { key:"kneeAngle",     label:"Knee Angle",         min:5,   max:175, hint:"interior"             },
+    { key:"shoulderAngle", label:"Shoulder Elevation", min:0,   max:180, hint:"0=down / 180=overhead"    },
+    { key:"elbowAngle",    label:"Elbow Angle",        min:0,   max:175, hint:"0=straight / 90=bent" },
+    { key:"footAngle",     label:"Foot Angle",         min:-45, max:45,  hint:"+ toes up / - down"   },
   ];
 
   const panel   = { background:"#111827", borderRadius:"8px", border:"1px solid #1e2d47", padding:"16px" };
@@ -675,8 +686,8 @@ function App() {
               {[{v:'M',label:'♂  MALE'},{v:'F',label:'♀  FEMALE'}].map(g=>(
                 <button key={g.v} onClick={()=>{
                   setGender(g.v);
-                  if(g.v==='M'){ setMass(75); setHeightCm(175); }
-                  else         { setMass(62); setHeightCm(161); }
+                  if(g.v==='M'){ setMass(lbsToKg(165)); setHeightCm(Math.round(69*2.54)); }
+                  else         { setMass(lbsToKg(137)); setHeightCm(Math.round(64*2.54)); }
                 }} style={{
                   flex:1, padding:"7px 0", borderRadius:"5px", border:"none", cursor:"pointer",
                   fontFamily:"'Courier New',monospace", fontSize:"11px", letterSpacing:"2px", fontWeight:"bold",
@@ -689,22 +700,36 @@ function App() {
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px" }}>
               {[
-                { label:"Body Mass", value:mass,     set:setMass,     min:40,  max:180, unit:"kg" },
-                { label:"Height",    value:heightCm, set:setHeightCm, min:140, max:215, unit:"cm" },
-              ].map(inp=>(
-                <div key={inp.label}>
-                  <div style={{ fontSize:"9px", color:"#64748b", letterSpacing:"1.8px", marginBottom:"6px", fontFamily:"'Courier New',monospace" }}>
-                    {inp.label.toUpperCase()}
-                  </div>
-                  <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
-                    <input type="range" min={inp.min} max={inp.max} step={1} value={inp.value}
-                           onChange={e=>inp.set(Number(e.target.value))} style={{ flex:1, accentColor:"#60a5fa" }}/>
-                    <span style={{ color:"#e2e8f0", fontSize:"15px", fontWeight:"600", minWidth:"58px", textAlign:"right", fontFamily:"'Courier New',monospace" }}>
-                      {inp.value}<span style={{ fontSize:"10px", color:"#64748b" }}> {inp.unit}</span>
-                    </span>
-                  </div>
+                ].map(()=>null)}
+              {/* Weight */}
+              <div>
+                <div style={{ fontSize:"9px", color:"#64748b", letterSpacing:"1.8px", marginBottom:"6px", fontFamily:"'Courier New',monospace" }}>BODY WEIGHT</div>
+                <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
+                  <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"22px" }}>88</span>
+                  <input type="range" min={88} max={396} step={1} value={Math.round(kgToLbs(mass))}
+                         onChange={e=>setMass(lbsToKg(Number(e.target.value)))}
+                         style={{ flex:1, accentColor:"#60a5fa" }}/>
+                  <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"28px", textAlign:"right" }}>396</span>
+                  <span style={{ color:"#e2e8f0", fontSize:"15px", fontWeight:"600", minWidth:"62px", textAlign:"right", fontFamily:"'Courier New',monospace" }}>
+                    {Math.round(kgToLbs(mass))}<span style={{ fontSize:"10px", color:"#64748b" }}> lb</span>
+                  </span>
                 </div>
-              ))}
+              </div>
+              {/* Height */}
+              <div>
+                <div style={{ fontSize:"9px", color:"#64748b", letterSpacing:"1.8px", marginBottom:"6px", fontFamily:"'Courier New',monospace" }}>HEIGHT</div>
+                <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
+                  <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"22px" }}>4'7"</span>
+                  <input type="range" min={Math.round(55*2.54)} max={Math.round(84*2.54)} step={1} value={Math.round(heightCm)}
+                         onChange={e=>setHeightCm(Number(e.target.value))}
+                         style={{ flex:1, accentColor:"#60a5fa" }}/>
+                  <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"28px", textAlign:"right" }}>7'0"</span>
+                  <span style={{ color:"#e2e8f0", fontSize:"15px", fontWeight:"600", minWidth:"62px", textAlign:"right", fontFamily:"'Courier New',monospace" }}>
+                    {cmToFtIn(heightCm)}
+                  </span>
+                </div>
+              </div>
+              {[].map(()=>null)}
             </div>
             <div style={{ marginTop:"10px", padding:"8px", background:"#0d1425", borderRadius:"4px", fontSize:"10px", color:"#64748b" }}>
               BMI: <span style={{ color:"#10b981" }}>{(mass/(height*height)).toFixed(1)}</span>
@@ -733,21 +758,21 @@ function App() {
                     {inp.label}<span style={hint}>{inp.hint}</span>
                   </span>
                   <span style={{ color:"#e2e8f0", fontSize:"15px", fontWeight:"600", minWidth:"68px", textAlign:"right", fontFamily:"'Courier New',monospace" }}>
-                    {inp.val>=0?"+":""}{inp.val.toFixed(2)}<span style={{ fontSize:"10px", color:"#64748b" }}> m</span>
+                    {(inp.val*M_TO_IN)>=0?"+":""}{(inp.val*M_TO_IN).toFixed(1)}<span style={{ fontSize:"10px", color:"#64748b" }}> in</span>
                   </span>
                 </div>
                 <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
-                  <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"30px" }}>-0.50</span>
+                  <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"30px" }}>-20"</span>
                   <input type="range" min={-0.50} max={0.50} step={0.01} value={inp.val}
                          onChange={e=>inp.set(Number(e.target.value))} style={{ flex:1, accentColor:"#60a5fa" }}/>
-                  <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"30px", textAlign:"right" }}>+0.50</span>
+                  <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"30px", textAlign:"right" }}>+20"</span>
                 </div>
               </div>
             ))}
             <div style={{ padding:"7px 10px", background:"#0a1f12", borderRadius:"4px", fontSize:"10px", color:"#64748b" }}>
               Hip joint at &nbsp;
               <span style={{ color:"#22c55e" }}>
-                ({(-originX).toFixed(2)}&thinsp;X, {(-originZ).toFixed(2)}&thinsp;Z) m
+                ({(-originX*M_TO_IN).toFixed(1)}&thinsp;X, {(-originZ*M_TO_IN).toFixed(1)}&thinsp;Z) in
               </span>
               <span style={{ color:"#374151" }}> in axis frame</span>
             </div>
@@ -790,14 +815,14 @@ function App() {
                       {sl.label}<span style={hint}>{sl.hint}</span>
                     </span>
                     <span style={{ color:"#e2e8f0", fontSize:"15px", fontWeight:"600", minWidth:"60px", textAlign:"right", fontFamily:"'Courier New',monospace" }}>
-                      {(sl.val*2*100).toFixed(0)}<span style={{ fontSize:"10px", color:"#64748b" }}> cm</span>
+                      {(sl.val*2*M_TO_IN).toFixed(1)}<span style={{ fontSize:"10px", color:"#64748b" }}> in</span>
                     </span>
                   </div>
                   <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
-                    <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"28px" }}>{(sl.min*2*100).toFixed(0)}</span>
+                    <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"28px" }}>{(sl.min*2*M_TO_IN).toFixed(0)}"</span>
                     <input type="range" min={sl.min} max={sl.max} step={sl.step} value={sl.val}
                            onChange={e=>sl.set(Number(e.target.value))} style={{ flex:1, accentColor:"#60a5fa" }}/>
-                    <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"28px", textAlign:"right" }}>{(sl.max*2*100).toFixed(0)}</span>
+                    <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"28px", textAlign:"right" }}>{(sl.max*2*M_TO_IN).toFixed(0)}"</span>
                   </div>
                 </div>
               ))}
@@ -920,7 +945,7 @@ function App() {
               {/* Mass */}
               <div style={{ textAlign:"right" }}>
                 <span style={{ fontSize:"10px", color:"#4b5a70", fontFamily:"'Courier New',monospace" }}>
-                  {s.totalMass.toFixed(1)}
+                  {(s.totalMass*KG_TO_LB).toFixed(1)}
                 </span>
               </div>
             </div>
@@ -953,7 +978,7 @@ function App() {
           </div>
           <div style={{ textAlign:"right" }}>
             <span style={{ fontSize:"10px", color:"#94a3b8", fontFamily:"'Courier New',monospace" }}>
-              {mass.toFixed(0)}
+              {(mass*KG_TO_LB).toFixed(0)}
             </span>
           </div>
         </div>
@@ -962,7 +987,7 @@ function App() {
         <div style={{ padding:"6px 10px", marginTop:"4px", fontSize:"8px", color:"#374151",
                       display:"flex", justifyContent:"space-between" }}>
           <span>All values in kg·m²</span>
-          <span>Mass in kg</span>
+          <span>Mass in lb</span>
         </div>
       </div>
 
@@ -1037,7 +1062,7 @@ function App() {
         return (
           <div style={{ ...panel, marginTop:"16px", border:"1px solid #1e3a5f" }}>
             <div style={{ ...secTit, color:"#60a5fa" }}>
-              MOI EQUATIONS — CURRENT POSTURE · ORIGIN ({originX>=0?"+":""}{originX.toFixed(2)}&thinsp;X, {originZ>=0?"+":""}{originZ.toFixed(2)}&thinsp;Z)
+              MOI EQUATIONS — CURRENT POSTURE · ORIGIN ({(originX*M_TO_IN).toFixed(1)}&thinsp;X, {(originZ*M_TO_IN).toFixed(1)}&thinsp;Z in)
             </div>
 
             {/* General form */}
@@ -1118,7 +1143,7 @@ function App() {
                     {/* Verification */}
                     <div style={{ borderTop:"1px solid #1e2d47", paddingTop:"8px" }}>
                       <div style={{ fontSize:"9px", color:"#374151", marginBottom:"3px" }}>
-                        @ {mass} kg · {heightCm} cm:
+                        @ {Math.round(kgToLbs(mass))} lb · {cmToFtIn(heightCm)}:
                       </div>
                       <div style={{ ...mono, fontSize:"14px", color:ax.color, fontWeight:"bold" }}>
                         {ax.val.toFixed(3)} kg·m²
