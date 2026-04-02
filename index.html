@@ -147,62 +147,99 @@ const Y_FRAC = {
 // Dumas:   n=31  living subjects, stereophotogrammetry
 const W_DELEVA = 5, W_DUMAS = 2, W_TOTAL = W_DELEVA + W_DUMAS;
 
-// ─── Kinematics (sagittal plane X–Z) ─────────────────────────────────────────
-// Parameterised by segData so it works with both De Leva and Dumas datasets.
-// sep = { legSep, armSep } — lateral half-width in metres (measured values, not fractions).
-// All segment positions relative to HIP JOINT (trochanter). Angles in degrees.
-function computePosture(M, H, ang, segData, sep) {
-  const { trunkLean, thighAngle, kneeAngle, shoulderAngle, elbowAngle, footAngle } = ang;
-  const { legSep, armSep } = sep;
+// ─── Kinematics (sagittal X–Z) + Frontal Y spread ────────────────────────────
+// spread = { legSpread, armAbduction } — angles in degrees.
+//
+// Lateral Y positions are derived from anthropometry + spread angles:
+//   Hip joint fixed at  hipHalfW  = 0.095 × H  (De Leva hip breadth proxy)
+//   Shoulder fixed at   shlHalfW  = 0.130 × H  (De Leva shoulder breadth proxy)
+//
+// Leg spread angle θ_leg (0=legs together, 60=wide apart):
+//   y_hip   = hipHalfW                               (hip joint, fixed)
+//   y_knee  = hipHalfW + L.thigh × sin(θ_leg)        (knee diverges outward)
+//   y_thigh = hipHalfW + L.thigh × cf_thigh × sin(θ_leg)   (thigh CoM)
+//   y_shank = y_knee                                  (shank/foot hang from knee)
+//
+// Arm abduction angle θ_arm (0=arms at sides, 90=horizontal out):
+//   y_shl  = shlHalfW                                (shoulder joint, fixed)
+//   y_elbow= shlHalfW + L.uArm × sin(θ_arm)          (elbow diverges outward)
+//   y_uArm = shlHalfW + L.uArm × cf_uArm × sin(θ_arm)(upper arm CoM)
+//   y_fArm = y_elbow  (forearm/hand hang from elbow in frontal plane)
+function computePosture(M, H, ang, segData) {
+  const { trunkLean, thighAngle, kneeAngle, shoulderAngle, elbowAngle, footAngle,
+          legSpread, kneeSpread, armAbduction, elbowSpread } = ang;
   const SD = segData;
   const L = {};
   for (const [id, d] of Object.entries(SD)) L[id] = d.lf * H;
 
-  // Trunk — lean: + = backward, - = forward
+  // ── Anthropometric lateral half-widths (proportional to height) ──────────────
+  const hipHalfW = 0.095 * H;   // hip joint Y offset  (De Leva hip-breadth proxy)
+  const shlHalfW = 0.130 * H;   // shoulder joint Y offset (De Leva shoulder-breadth proxy)
+
+  // ── 3D spread angles (frontal plane) ──────────────────────────────────────
+  // KEY PHYSICS: segment length from De Leva is the true 3D length.
+  // When a segment spreads laterally by angle θ, its sagittal (X-Z) projections
+  // are scaled by cos(θ) and its lateral (Y) component is L × sin(θ).
+  // This preserves total 3D length:  √[(L·cosθ)²·(cos²α+sin²α) + (L·sinθ)²] = L ✓
+  // Frontal spread: cumulative per joint chain, preserves 3D De Leva segment length
+  const cosLeg = Math.cos(legSpread * DEG);
+  const sinLeg = Math.sin(legSpread * DEG);
+  const cosKne = Math.cos((legSpread + kneeSpread) * DEG);
+  const sinKne = Math.sin((legSpread + kneeSpread) * DEG);
+  const cosArm = Math.cos(armAbduction * DEG);
+  const sinArm = Math.sin(armAbduction * DEG);
+  const cosElb = Math.cos((armAbduction + elbowSpread) * DEG);
+  const sinElb = Math.sin((armAbduction + elbowSpread) * DEG);
+
+  // Lateral Y — each segment uses its own cumulative frontal angle
+  const y_uArmCom  = shlHalfW + L.uArm * SD.uArm.cf * sinArm;
+  const y_elbow    = shlHalfW + L.uArm * sinArm;
+  const y_fArmCom  = y_elbow  + L.fArm * SD.fArm.cf * sinElb;
+  const y_hand     = y_elbow  + L.fArm * sinElb;
+
+  const y_thighCom = hipHalfW + L.thigh * SD.thigh.cf * sinLeg;
+  const y_knee     = hipHalfW + L.thigh * sinLeg;
+  const y_shankCom = y_knee   + L.shank * SD.shank.cf * sinKne;
+  const y_ankle    = y_knee   + L.shank * sinKne;
+  const y_footCom  = y_ankle  + L.foot  * SD.foot.cf  * sinKne;
+
+  // Sagittal (X-Z): each segment scaled by its own cos(cumulative_frontal_angle)
   const aT = trunkLean * DEG;
-  const C7       = { x:-L.trunk*Math.sin(aT),              z: L.trunk*Math.cos(aT) };
-  const trunkCom = { x:-L.trunk*SD.trunk.cf*Math.sin(aT),  z: L.trunk*SD.trunk.cf*Math.cos(aT) };
+  const C7       = { x:-L.trunk*Math.sin(aT),             z: L.trunk*Math.cos(aT) };
+  const trunkCom = { x:-L.trunk*SD.trunk.cf*Math.sin(aT), z: L.trunk*SD.trunk.cf*Math.cos(aT) };
+  const headCom  = { x:C7.x, z:C7.z + L.head*SD.head.cf };
 
-  // Head — sits on C7
-  const headCom = { x:C7.x, z:C7.z + L.head*SD.head.cf };
-
-  // Upper arm — shoulderAngle: 0=hanging, 90=horizontal fwd
   const pA = (-90 + shoulderAngle)*DEG;
-  const elbowPos = { x:C7.x + L.uArm*Math.cos(pA),              z:C7.z + L.uArm*Math.sin(pA) };
-  const uArmCom  = { x:C7.x + L.uArm*SD.uArm.cf*Math.cos(pA),  z:C7.z + L.uArm*SD.uArm.cf*Math.sin(pA) };
-
-  // Forearm — interior elbowAngle: 180=straight, 90=bent
+  const elbowPos = { x:C7.x + L.uArm*Math.cos(pA)*cosArm,             z:C7.z + L.uArm*Math.sin(pA)*cosArm };
+  const uArmCom  = { x:C7.x + L.uArm*SD.uArm.cf*Math.cos(pA)*cosArm, z:C7.z + L.uArm*SD.uArm.cf*Math.sin(pA)*cosArm };
   const pF = pA + (180-elbowAngle)*DEG;
-  const wristPos = { x:elbowPos.x + L.fArm*Math.cos(pF),              z:elbowPos.z + L.fArm*Math.sin(pF) };
-  const fArmCom  = { x:elbowPos.x + L.fArm*SD.fArm.cf*Math.cos(pF),  z:elbowPos.z + L.fArm*SD.fArm.cf*Math.sin(pF) };
-  const handCom  = { x:wristPos.x + L.hand*SD.hand.cf*Math.cos(pF),  z:wristPos.z + L.hand*SD.hand.cf*Math.sin(pF) };
+  const wristPos = { x:elbowPos.x + L.fArm*Math.cos(pF)*cosElb,             z:elbowPos.z + L.fArm*Math.sin(pF)*cosElb };
+  const fArmCom  = { x:elbowPos.x + L.fArm*SD.fArm.cf*Math.cos(pF)*cosElb, z:elbowPos.z + L.fArm*SD.fArm.cf*Math.sin(pF)*cosElb };
+  const handCom  = { x:wristPos.x + L.hand*SD.hand.cf*Math.cos(pF)*cosElb, z:wristPos.z + L.hand*SD.hand.cf*Math.sin(pF)*cosElb };
 
-  // Thigh — 0=horizontal fwd, +=knee above hip
   const pTh = thighAngle*DEG;
-  const kneePos  = { x:L.thigh*Math.cos(pTh),             z:L.thigh*Math.sin(pTh) };
-  const thighCom = { x:L.thigh*SD.thigh.cf*Math.cos(pTh), z:L.thigh*SD.thigh.cf*Math.sin(pTh) };
-
-  // Shank — interior kneeAngle
+  const kneePos  = { x:L.thigh*Math.cos(pTh)*cosLeg,             z:L.thigh*Math.sin(pTh)*cosLeg };
+  const thighCom = { x:L.thigh*SD.thigh.cf*Math.cos(pTh)*cosLeg, z:L.thigh*SD.thigh.cf*Math.sin(pTh)*cosLeg };
   const pSh = (thighAngle+kneeAngle-180)*DEG;
-  const anklePos = { x:kneePos.x + L.shank*Math.cos(pSh),              z:kneePos.z + L.shank*Math.sin(pSh) };
-  const shankCom = { x:kneePos.x + L.shank*SD.shank.cf*Math.cos(pSh), z:kneePos.z + L.shank*SD.shank.cf*Math.sin(pSh) };
-
-  // Foot — footAngle: 0=flat, +=toes up, -=toes down
+  const anklePos = { x:kneePos.x + L.shank*Math.cos(pSh)*cosKne,             z:kneePos.z + L.shank*Math.sin(pSh)*cosKne };
+  const shankCom = { x:kneePos.x + L.shank*SD.shank.cf*Math.cos(pSh)*cosKne, z:kneePos.z + L.shank*SD.shank.cf*Math.sin(pSh)*cosKne };
   const pFt = footAngle*DEG;
-  const footTip = { x:anklePos.x + L.foot*Math.cos(pFt),             z:anklePos.z + L.foot*Math.sin(pFt) };
-  const footCom = { x:anklePos.x + L.foot*SD.foot.cf*Math.cos(pFt), z:anklePos.z + L.foot*SD.foot.cf*Math.sin(pFt) };
+  const footTip = { x:anklePos.x + L.foot*Math.cos(pFt)*cosKne,             z:anklePos.z + L.foot*Math.sin(pFt)*cosKne };
+  const footCom = { x:anklePos.x + L.foot*SD.foot.cf*Math.cos(pFt)*cosKne,  z:anklePos.z + L.foot*SD.foot.cf*Math.sin(pFt)*cosKne };
 
   const segs = [
-    { id:"head",  com:headCom,  m:SD.head.mf *M, L:L.head,  k:SD.head.k,  y:0,       n:1 },
-    { id:"trunk", com:trunkCom, m:SD.trunk.mf*M, L:L.trunk, k:SD.trunk.k, y:0,       n:1 },
-    { id:"uArm",  com:uArmCom,  m:SD.uArm.mf *M, L:L.uArm,  k:SD.uArm.k,  y:armSep,  n:2 },
-    { id:"fArm",  com:fArmCom,  m:SD.fArm.mf *M, L:L.fArm,  k:SD.fArm.k,  y:armSep,  n:2 },
-    { id:"hand",  com:handCom,  m:SD.hand.mf *M, L:L.hand,  k:SD.hand.k,  y:armSep,  n:2 },
-    { id:"thigh", com:thighCom, m:SD.thigh.mf*M, L:L.thigh, k:SD.thigh.k, y:legSep,  n:2 },
-    { id:"shank", com:shankCom, m:SD.shank.mf*M, L:L.shank, k:SD.shank.k, y:legSep,  n:2 },
-    { id:"foot",  com:footCom,  m:SD.foot.mf *M, L:L.foot,  k:SD.foot.k,  y:legSep,  n:2 },
+    { id:"head",  com:headCom,  m:SD.head.mf *M, L:L.head,  k:SD.head.k,  y:0,           n:1 },
+    { id:"trunk", com:trunkCom, m:SD.trunk.mf*M, L:L.trunk, k:SD.trunk.k, y:0,           n:1 },
+    { id:"uArm",  com:uArmCom,  m:SD.uArm.mf *M, L:L.uArm,  k:SD.uArm.k,  y:y_uArmCom,  n:2 },
+    { id:"fArm",  com:fArmCom,  m:SD.fArm.mf *M, L:L.fArm,  k:SD.fArm.k,  y:y_fArmCom,  n:2 },
+    { id:"hand",  com:handCom,  m:SD.hand.mf *M, L:L.hand,  k:SD.hand.k,  y:y_hand,      n:2 },
+    { id:"thigh", com:thighCom, m:SD.thigh.mf*M, L:L.thigh, k:SD.thigh.k, y:y_thighCom,  n:2 },
+    { id:"shank", com:shankCom, m:SD.shank.mf*M, L:L.shank, k:SD.shank.k, y:y_shankCom,  n:2 },
+    { id:"foot",  com:footCom,  m:SD.foot.mf *M, L:L.foot,  k:SD.foot.k,  y:y_footCom,   n:2 },
   ];
-  return { segs, joints:{ C7, elbowPos, wristPos, kneePos, anklePos, footTip }, L };
+  // Expose computed lateral positions for FrontView
+  const lateralY = { hipHalfW, shlHalfW, y_knee, y_elbow, y_ankle, y_hand };
+  return { segs, joints:{ C7, elbowPos, wristPos, kneePos, anklePos, footTip }, L, lateralY };
 }
 
 // ─── MOI Computation ─────────────────────────────────────────────────────────
@@ -214,16 +251,23 @@ function computePosture(M, H, ang, segData, sep) {
 // I_roll  (about X-axis): d^2 = dz^2 + y^2
 // I_pitch (about Y-axis): d^2 = dx^2 + dz^2
 // I_yaw   (about Z-axis): d^2 = dx^2 + y^2
-function computeMOI(segs, originX, originZ) {
+function computeMOI(segs, originX, originY, originZ) {
+  // originY: lateral offset of axis origin from body centreline
+  // For bilateral segments (n=2), each side sits at ±y from centreline.
+  // Distance from axis: dy_left = (-y - originY), dy_right = (y - originY)
+  // Average squared distance = y² + originY² (cross term cancels by symmetry)
+  // For midline segments (n=1, y=0): dy = -originY
   let Iroll=0, Ipitch=0, Iyaw=0;
   const breakdown = [];
   for (const { id, com, m, L, k, y, n } of segs) {
-    const dx = com.x - originX;
-    const dz = com.z - originZ;
-    const Iloc = (k*L)**2 * m;           // local MOI via De Leva Rg
-    const ir = n*(Iloc + m*(dz*dz + y*y));
+    const dx   = com.x - originX;
+    const dz   = com.z - originZ;
+    const Iloc = (k*L)**2 * m;
+    // Y displacement² — bilateral average
+    const dy2 = (n===2) ? (y*y + originY*originY) : (originY*originY);
+    const ir = n*(Iloc + m*(dz*dz + dy2));
     const ip = n*(Iloc + m*(dx*dx + dz*dz));
-    const iy = n*(Iloc + m*(dx*dx + y*y));
+    const iy = n*(Iloc + m*(dx*dx + dy2));
     Iroll+=ir; Ipitch+=ip; Iyaw+=iy;
     breakdown.push({ id, ir, ip, iy, totalMass:n*m });
   }
@@ -236,67 +280,221 @@ function toSVG(p, hipPX, hipPZ, scale) {
   return { x: hipPX + p.x*scale, y: hipPZ - p.z*scale };
 }
 
-// ─── Front View Component (Y–Z plane) ────────────────────────────────────────
-// ─── Front View Component (Y–Z plane) ────────────────────────────────────────
-// Represents a seated person viewed from the front.
-// Key design decisions:
-//   • Thighs diverge from hip CENTRE (Y=0) outward to knee (Y=±legSep).
-//     This correctly shows the seated thigh going forward (X) and outward (Y).
-//     When thighAngle≈0°, knee_Z ≈ hip_Z → thigh appears nearly horizontal ✓
-//   • Forearm shown going slightly OUTWARD from elbow (in +Y), representing the
-//     forearm going forward into the sagittal plane. Avoids the unnatural
-//     upward-pointing forearm artifact that occurs when wrist_Z > elbow_Z.
-//   • Seat line drawn at hip Z=0 as context for the viewer.
-// ─── Front View Component (Y–Z plane) ────────────────────────────────────────
-// PROJECTION RULE: Every point drawn at (Y, Z) where:
-//   Y = lateral offset (legSep or armSep, 0 for midline) — from slider
-//   Z = sagittal Z coordinate from kinematics — same value used for CoM dots
-// This guarantees skeleton lines and CoM dots are always consistent.
+// ─── DimLine (kept for possible future use — not rendered currently) ──────────
+function DimLine({ x1, y1, x2, y2, label, off, color }) { return null; }
+
+// ─── Top View Component (X–Y plane) ──────────────────────────────────────────
+// Third-angle orthographic projection — looking DOWN the −Z axis.
+//   X → right  (+X = forward)    Y ↓ down  (+Y = lateral right)
+// Width = SVG_W matches Sagittal exactly → X grid aligns between views.
+// hipX = 110 = same as sagittal hipPX → forward positions align.
+// hipY = 150 → centred in 300px height, handles full slider range.
 //
-// Thighs diverge from hip CENTRE (Y=0) to knee (Y=±legSep, Z=kneePos.z).
-// This correctly represents the outward + forward spread of a seated thigh.
+// All lines SOLID — no hidden-line dashes (keeps the figure readable).
+// No dimension annotations — clean engineering schematic style.
+function TopView({ joints, segs, lateralY, originX, originY, L, dlData, panel, secTit, SCALE, SVG_W, cog }) {
+  const TH  = 300;
+  const hipX = 110;
+  const hipY = 150;
+  const tv = (x, y) => ({ x: hipX + x*SCALE, y: hipY + y*SCALE });
+
+  const { C7, kneePos, anklePos, footTip, elbowPos, wristPos } = joints;
+  const { hipHalfW, shlHalfW, y_knee, y_elbow, y_ankle, y_hand } = lateralY;
+
+  const headR  = Math.max(L.head * 0.38 * SCALE, 7);
+
+  const origP = tv(originX, originY || 0);
+  const hipC  = tv(0, 0);
+  const hipL  = tv(0, -hipHalfW);   const hipR = tv(0,  hipHalfW);
+  const c7p   = tv(C7.x, 0);
+  const headP = tv(C7.x, 0);
+
+  const shlL  = tv(C7.x, -shlHalfW);      const shlR = tv(C7.x,  shlHalfW);
+  const elbL  = tv(elbowPos.x, -y_elbow);  const elbR = tv(elbowPos.x,  y_elbow);
+  const wriL  = tv(wristPos.x, -y_hand);   const wriR = tv(wristPos.x,  y_hand);
+
+  const kneL  = tv(kneePos.x, -y_knee);    const kneR = tv(kneePos.x,  y_knee);
+  const ankL  = tv(anklePos.x, -y_ankle);  const ankR = tv(anklePos.x,  y_ankle);
+  const ftL   = tv(footTip.x,  -y_ankle);  const ftR  = tv(footTip.x,   y_ankle);
+
+  return (
+    <div style={{ ...panel, padding:"12px" }}>
+      <div style={secTit}>TOP  (X–Y)</div>
+      <svg width={SVG_W} height={TH}>
+
+        {/* Grid — same scale and X-offset as Sagittal */}
+        {[-0.3,0,0.3,0.6,0.9,1.2].map(v=>(
+          <line key={"tgx"+v} x1={hipX+v*SCALE} y1={0} x2={hipX+v*SCALE} y2={TH}
+                stroke="#0d1a2e" strokeWidth="1"/>
+        ))}
+        {[-0.6,-0.3,0,0.3,0.6].map(v=>(
+          <line key={"tgy"+v} x1={0} y1={hipY+v*SCALE} x2={SVG_W} y2={hipY+v*SCALE}
+                stroke="#0d1a2e" strokeWidth="1"/>
+        ))}
+
+        {/* CL — sagittal plane Y=0 — chain-dot */}
+        <line x1={0} y1={hipY} x2={SVG_W} y2={hipY}
+              stroke="#22c55e" strokeWidth="0.9" strokeDasharray="14,4,2,4" opacity="0.4"/>
+        <text x={SVG_W-6} y={hipY-4} fontSize="7" fill="#22c55e" textAnchor="end" opacity="0.45"
+              fontFamily="Courier New,monospace">CL</text>
+
+        {/* Axis arrows */}
+        <defs>
+          <marker id="tvX" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+            <path d="M0,0.5 L6,3.5 L0,6.5 Z" fill="#22c55e"/>
+          </marker>
+          <marker id="tvY" markerWidth="7" markerHeight="7" refX="3.5" refY="5" orient="auto">
+            <path d="M0.5,0 L6.5,0 L3.5,6 Z" fill="#22c55e"/>
+          </marker>
+        </defs>
+        <line x1={origP.x} y1={origP.y} x2={origP.x+44} y2={origP.y}
+              stroke="#22c55e" strokeWidth="1.5" markerEnd="url(#tvX)"/>
+        <text x={origP.x+48} y={origP.y+4} fontSize="9" fill="#22c55e" fontWeight="bold">X</text>
+        <line x1={origP.x} y1={origP.y} x2={origP.x} y2={origP.y+44}
+              stroke="#22c55e" strokeWidth="1.5" markerEnd="url(#tvY)"/>
+        <text x={origP.x+4} y={origP.y+58} fontSize="9" fill="#22c55e" fontWeight="bold">Y</text>
+        <circle cx={origP.x} cy={origP.y} r={3.5} fill="#22c55e" opacity="0.9"/>
+
+        {/* Trunk */}
+        <line x1={hipC.x} y1={hipC.y} x2={c7p.x} y2={c7p.y}
+              stroke="#f59e0b" strokeWidth="8" strokeLinecap="round"/>
+
+        {/* Head — circle from above (head is approximately spherical) */}
+        <circle cx={headP.x} cy={headP.y} r={headR}
+                fill="#0d1a2e" stroke="#f59e0b" strokeWidth="4.5"/>
+
+        {/* Shoulder bar */}
+        <line x1={shlL.x} y1={shlL.y} x2={shlR.x} y2={shlR.y}
+              stroke="#fb923c" strokeWidth="5" strokeLinecap="round"/>
+
+        {/* Arms */}
+        <line x1={shlL.x} y1={shlL.y} x2={elbL.x} y2={elbL.y}
+              stroke="#fb923c" strokeWidth="5" strokeLinecap="round"/>
+        <line x1={elbL.x} y1={elbL.y} x2={wriL.x} y2={wriL.y}
+              stroke="#fb923c" strokeWidth="3" strokeLinecap="round"/>
+        <circle cx={elbL.x} cy={elbL.y} r={4} fill="#fb923c" stroke="#0d1425" strokeWidth="1.5"/>
+        <line x1={shlR.x} y1={shlR.y} x2={elbR.x} y2={elbR.y}
+              stroke="#fb923c" strokeWidth="5" strokeLinecap="round"/>
+        <line x1={elbR.x} y1={elbR.y} x2={wriR.x} y2={wriR.y}
+              stroke="#fb923c" strokeWidth="3" strokeLinecap="round"/>
+        <circle cx={elbR.x} cy={elbR.y} r={4} fill="#fb923c" stroke="#0d1425" strokeWidth="1.5"/>
+
+        {/* Hip bar */}
+        <line x1={hipL.x} y1={hipL.y} x2={hipR.x} y2={hipR.y}
+              stroke="#f59e0b" strokeWidth="5" strokeLinecap="round"/>
+
+        {/* Thighs */}
+        <line x1={hipL.x} y1={hipL.y} x2={kneL.x} y2={kneL.y}
+              stroke="#38bdf8" strokeWidth="7" strokeLinecap="round"/>
+        <line x1={hipR.x} y1={hipR.y} x2={kneR.x} y2={kneR.y}
+              stroke="#38bdf8" strokeWidth="7" strokeLinecap="round"/>
+
+        {/* Shanks — solid, slightly thinner */}
+        <line x1={kneL.x} y1={kneL.y} x2={ankL.x} y2={ankL.y}
+              stroke="#38bdf8" strokeWidth="4" strokeLinecap="round"/>
+        <line x1={kneR.x} y1={kneR.y} x2={ankR.x} y2={ankR.y}
+              stroke="#38bdf8" strokeWidth="4" strokeLinecap="round"/>
+
+        {/* Feet — solid, thinner */}
+        <line x1={ankL.x} y1={ankL.y} x2={ftL.x} y2={ftL.y}
+              stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round"/>
+        <line x1={ankR.x} y1={ankR.y} x2={ftR.x} y2={ftR.y}
+              stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round"/>
+
+        {/* Joint dots */}
+        {[
+          {p:hipL,r:5,c:"#f59e0b"},{p:hipC,r:7,c:"#f59e0b"},{p:hipR,r:5,c:"#f59e0b"},
+          {p:kneL,r:5,c:"#38bdf8"},{p:kneR,r:5,c:"#38bdf8"},
+          {p:ankL,r:3,c:"#38bdf8"},{p:ankR,r:3,c:"#38bdf8"},
+        ].map((d,i)=>(
+          <g key={"tj"+i}>
+            <circle cx={d.p.x} cy={d.p.y} r={d.r+2} fill="rgba(0,0,0,0.4)"/>
+            <circle cx={d.p.x} cy={d.p.y} r={d.r}   fill={d.c} stroke="#0d1425" strokeWidth="1.5"/>
+          </g>
+        ))}
+        <text x={hipC.x+10} y={hipC.y-9} fontSize="7.5" fill="#f59e0b"
+              fontFamily="Courier New,monospace" opacity="0.8">HIP</text>
+
+        {/* CoM dots */}
+        {segs.flatMap((s,idx)=>{
+          const ys = s.n===2 ? [-s.y, s.y] : [0];
+          return ys.map((yv,j)=>{
+            const p = tv(s.com.x, yv);
+            return (
+              <g key={idx+"-"+j}>
+                <circle cx={p.x} cy={p.y} r={5}   fill="rgba(16,185,129,0.1)"/>
+                <circle cx={p.x} cy={p.y} r={2.5}  fill="rgba(16,185,129,0.95)"
+                        stroke="rgba(16,185,129,0.25)" strokeWidth="1"/>
+              </g>
+            );
+          });
+        })}
+
+        {/* Body CoG — X and Y position in top view */}
+        {cog && (()=>{ const g=tv(cog.x, 0); return (<>
+          <circle cx={g.x} cy={g.y} r={9}  fill="rgba(250,204,21,0.15)"/>
+          <circle cx={g.x} cy={g.y} r={5}  fill="#facc15" stroke="#0d1425" strokeWidth="1.5"/>
+          <line x1={g.x-11} y1={g.y} x2={g.x+11} y2={g.y} stroke="#facc15" strokeWidth="1" opacity="0.7"/>
+          <line x1={g.x} y1={g.y-11} x2={g.x} y2={g.y+11} stroke="#facc15" strokeWidth="1" opacity="0.7"/>
+          <text x={g.x+13} y={g.y+4} fontSize="8" fill="#facc15"
+                fontFamily="Courier New,monospace">CoG</text>
+        </>);})()}
+
+        {/* Legend */}
+        <circle cx={8} cy={TH-22} r={2.5} fill="rgba(16,185,129,0.9)"/>
+        <text x={14} y={TH-18} fontSize="8" fill="#4ade80"
+              fontFamily="Courier New,monospace">CoM</text>
+        <circle cx={8} cy={TH-8} r={4} fill="#facc15"/>
+        <text x={14} y={TH-4} fontSize="8" fill="#facc15"
+              fontFamily="Courier New,monospace">CoG</text>
+      </svg>
+    </div>
+  );
+}
+
+
 // ─── Front View Component (Y–Z plane) ────────────────────────────────────────
-// PROJECTION: pure Y-Z orthographic (looking down +X axis / from the front).
+// ─── Top View Component (X–Y plane) ──────────────────────────────────────────
+// Engineering orthographic projection — looking DOWN the −Z axis.
 //
-// Bilateral segments (arms, legs): Y=±offset (constant along segment in 3D),
-// Z from sagittal kinematics. CoM dots are thus at (Y=±s.y, Z=s.com.z) — the
-// correct Y-Z projection of the 3D CoM position.
+// CONVENTIONS (US third-angle projection):
+//   X → right  (forward = positive X, same as sagittal)
+//   Y ↓ down   (lateral right = positive Y, toward front view)
+//   Hidden lines (below plane of view) shown DASHED  — #38bdf8 shanks/feet
+//   Visible lines shown SOLID
+//   Center lines (sagittal plane Y=0) shown CHAIN-DOT
+//   Dimension lines: perpendicular extension lines, arrow-terminated dim line
 //
-// THIGH: drawn from the ACTUAL hip joint (±legSep, 0) to knee (±legSep, kneeZ).
-// This is anatomically correct — the hip joint IS at ±legSep laterally.
-// When the thigh is nearly horizontal (thighAngle≈0), the thigh barely moves in Z
-// and a depth hint arrow shows it extends forward into the page (X direction).
-function FrontView({ joints, segs, legSep, armSep, originZ, L, dlData, panel, secTit, SCALE, SVG_H }) {
+// All Y positions come from lateralY (computed in computePosture) ensuring
+// full consistency with the front view and MOI calculation.
+function FrontView({ joints, segs, lateralY, originZ, L, dlData, panel, secTit, SCALE, SVG_H, cog }) {
   const FW    = 220;
   const fHipZ = Math.round(SVG_H * 0.67);
   const fCX   = FW / 2;
   const fv    = (y, z) => ({ x: fCX + y*SCALE, y: fHipZ - z*SCALE });
 
   const { C7, kneePos, anklePos, footTip, elbowPos, wristPos } = joints;
+  const { hipHalfW, shlHalfW, y_knee, y_elbow, y_hand, y_ankle } = lateralY;
   const headZ  = C7.z + L.head * dlData.head.cf;
   const headR2 = Math.max(L.head * 0.42 * SCALE, 10);
   const fOrig  = fv(0, originZ);
 
   // Midline
-  const hipC  = fv(0, 0);
-  const trk   = fv(0, C7.z);
-  const headC = fv(0, headZ);
+  const hipC = fv(0, 0);
+  const trk  = fv(0, C7.z);
+  const headC= fv(0, headZ);
 
-  // Arms
-  const shlL = fv(-armSep, C7.z);       const shlR = fv( armSep, C7.z);
-  const elbL = fv(-armSep, elbowPos.z);  const elbR = fv( armSep, elbowPos.z);
-  const wriL = fv(-armSep, wristPos.z);  const wriR = fv( armSep, wristPos.z);
+  // Arms — shoulder at ±shlHalfW, elbow at ±y_elbow, wrist at ±y_hand
+  // Both Y (lateral) AND Z (vertical from sagittal kinematics with cosArm factor)
+  const shlL = fv(-shlHalfW, C7.z);     const shlR = fv( shlHalfW, C7.z);
+  const elbL = fv(-y_elbow,  elbowPos.z); const elbR = fv( y_elbow,  elbowPos.z);
+  const wriL = fv(-y_hand,   wristPos.z); const wriR = fv( y_hand,   wristPos.z);
 
-  // Legs — anchored at actual hip joint positions (±legSep, 0)
-  const hipL = fv(-legSep, 0);          const hipR = fv( legSep, 0);
-  const kneL = fv(-legSep, kneePos.z);  const kneR = fv( legSep, kneePos.z);
-  const ankL = fv(-legSep, anklePos.z); const ankR = fv( legSep, anklePos.z);
-  const ftL  = fv(-legSep, footTip.z);  const ftR  = fv( legSep, footTip.z);
-
-  // Show depth hint when thigh is nearly horizontal (<18 px vertical travel)
-  const thighVertPx  = Math.abs(kneL.y - hipL.y);
-  const showDepth    = thighVertPx < 18;
-  const dLen         = 13;
+  // Legs — hip joint at ±hipHalfW, knee at ±y_knee, ankle at ±y_ankle
+  const hipL = fv(-hipHalfW, 0);         const hipR = fv( hipHalfW, 0);
+  const kneL = fv(-y_knee,  kneePos.z);  const kneR = fv( y_knee,   kneePos.z);
+  const ankL = fv(-y_ankle, anklePos.z); const ankR = fv( y_ankle,  anklePos.z);
+  const ftL  = fv(-y_ankle, footTip.z);  const ftR  = fv( y_ankle,  footTip.z);
 
   return (
     <div style={{ ...panel, padding:"12px" }}>
@@ -305,12 +503,10 @@ function FrontView({ joints, segs, legSep, armSep, originZ, L, dlData, panel, se
 
         {/* Grid */}
         {[-0.6,-0.3,0,0.3,0.6,0.9,1.2].map(v=>(
-          <line key={"fgz"+v} x1={0} y1={fHipZ-v*SCALE} x2={FW} y2={fHipZ-v*SCALE}
-                stroke="#0d1a2e" strokeWidth="1"/>
+          <line key={"fgz"+v} x1={0} y1={fHipZ-v*SCALE} x2={FW} y2={fHipZ-v*SCALE} stroke="#0d1a2e" strokeWidth="1"/>
         ))}
         {[-0.3,0,0.3].map(v=>(
-          <line key={"fgy"+v} x1={fCX+v*SCALE} y1={0} x2={fCX+v*SCALE} y2={SVG_H}
-                stroke="#0d1a2e" strokeWidth="1"/>
+          <line key={"fgy"+v} x1={fCX+v*SCALE} y1={0} x2={fCX+v*SCALE} y2={SVG_H} stroke="#0d1a2e" strokeWidth="1"/>
         ))}
 
         <defs>
@@ -320,107 +516,72 @@ function FrontView({ joints, segs, legSep, armSep, originZ, L, dlData, panel, se
           <marker id="farrFZ" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto">
             <path d="M0,1 L6,3.5 L0,6 Z" fill="#22c55e"/>
           </marker>
-          <marker id="fdepth" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-            <path d="M0,1 L5,3 L0,5 Z" fill="#38bdf8" opacity="0.55"/>
-          </marker>
+
         </defs>
 
         {/* Axis arrows */}
-        <line x1={fOrig.x} y1={fOrig.y} x2={fOrig.x+48} y2={fOrig.y}
-              stroke="#22c55e" strokeWidth="1.8" markerEnd="url(#farrY)"/>
-        <line x1={fOrig.x} y1={fOrig.y} x2={fOrig.x} y2={fOrig.y-48}
-              stroke="#22c55e" strokeWidth="1.8" markerEnd="url(#farrFZ)"/>
+        <line x1={fOrig.x} y1={fOrig.y} x2={fOrig.x+48} y2={fOrig.y} stroke="#22c55e" strokeWidth="1.8" markerEnd="url(#farrY)"/>
+        <line x1={fOrig.x} y1={fOrig.y} x2={fOrig.x} y2={fOrig.y-48} stroke="#22c55e" strokeWidth="1.8" markerEnd="url(#farrFZ)"/>
         <text x={fOrig.x+51} y={fOrig.y+4}  fontSize="9" fill="#22c55e" fontWeight="bold">Y</text>
         <text x={fOrig.x+3}  y={fOrig.y-51} fontSize="9" fill="#22c55e" fontWeight="bold">Z</text>
         <circle cx={fOrig.x} cy={fOrig.y} r={4} fill="#22c55e" opacity="0.9"/>
 
-        {/* Seat reference line */}
-        <line x1={fv(-legSep-0.06,0).x} y1={hipC.y} x2={fv(legSep+0.06,0).x} y2={hipC.y}
-              stroke="#1e2d47" strokeWidth="1.5" strokeDasharray="5,3"/>
+        {/* Seat reference */}
+        <line x1={fv(-(y_knee+0.06),0).x} y1={hipC.y} x2={fv(y_knee+0.06,0).x} y2={hipC.y} stroke="#1e2d47" strokeWidth="1.5" strokeDasharray="5,3"/>
 
-        {/* ── Trunk ── */}
-        <line x1={hipC.x} y1={hipC.y} x2={trk.x} y2={trk.y}
-              stroke="#f59e0b" strokeWidth="8" strokeLinecap="round"/>
+        {/* Trunk */}
+        <line x1={hipC.x} y1={hipC.y} x2={trk.x} y2={trk.y} stroke="#f59e0b" strokeWidth="8" strokeLinecap="round"/>
 
-        {/* ── Shoulder bar ── */}
-        <line x1={shlL.x} y1={shlL.y} x2={shlR.x} y2={shlR.y}
-              stroke="#fb923c" strokeWidth="5" strokeLinecap="round"/>
+        {/* Shoulder bar */}
+        <line x1={shlL.x} y1={shlL.y} x2={shlR.x} y2={shlR.y} stroke="#fb923c" strokeWidth="5" strokeLinecap="round"/>
 
-        {/* ── Arms ── */}
-        <line x1={shlL.x} y1={shlL.y} x2={elbL.x} y2={elbL.y}
-              stroke="#fb923c" strokeWidth="5" strokeLinecap="round"/>
-        <line x1={elbL.x} y1={elbL.y} x2={wriL.x} y2={wriL.y}
-              stroke="#fb923c" strokeWidth="3" strokeLinecap="round"/>
+        {/* Arms */}
+        <line x1={shlL.x} y1={shlL.y} x2={elbL.x} y2={elbL.y} stroke="#fb923c" strokeWidth="5" strokeLinecap="round"/>
+        <line x1={elbL.x} y1={elbL.y} x2={wriL.x} y2={wriL.y} stroke="#fb923c" strokeWidth="3" strokeLinecap="round"/>
         <circle cx={elbL.x} cy={elbL.y} r={5} fill="#fb923c" stroke="#0d1425" strokeWidth="1.5"/>
-        <line x1={shlR.x} y1={shlR.y} x2={elbR.x} y2={elbR.y}
-              stroke="#fb923c" strokeWidth="5" strokeLinecap="round"/>
-        <line x1={elbR.x} y1={elbR.y} x2={wriR.x} y2={wriR.y}
-              stroke="#fb923c" strokeWidth="3" strokeLinecap="round"/>
+        <line x1={shlR.x} y1={shlR.y} x2={elbR.x} y2={elbR.y} stroke="#fb923c" strokeWidth="5" strokeLinecap="round"/>
+        <line x1={elbR.x} y1={elbR.y} x2={wriR.x} y2={wriR.y} stroke="#fb923c" strokeWidth="3" strokeLinecap="round"/>
         <circle cx={elbR.x} cy={elbR.y} r={5} fill="#fb923c" stroke="#0d1425" strokeWidth="1.5"/>
 
-        {/* ── Hip bar — connects actual hip joints ── */}
-        <line x1={hipL.x} y1={hipL.y} x2={hipR.x} y2={hipR.y}
-              stroke="#f59e0b" strokeWidth="5" strokeLinecap="round"/>
+        {/* Hip bar */}
+        <line x1={hipL.x} y1={hipL.y} x2={hipR.x} y2={hipR.y} stroke="#f59e0b" strokeWidth="5" strokeLinecap="round"/>
 
-        {/* ── Thighs — from hip joint (±legSep,0) to knee ── */}
-        <line x1={hipL.x} y1={hipL.y} x2={kneL.x} y2={kneL.y}
-              stroke="#38bdf8" strokeWidth="7" strokeLinecap="round"/>
-        <line x1={hipR.x} y1={hipR.y} x2={kneR.x} y2={kneR.y}
-              stroke="#38bdf8" strokeWidth="7" strokeLinecap="round"/>
+        {/* Thighs */}
+        <line x1={hipL.x} y1={hipL.y} x2={kneL.x} y2={kneL.y} stroke="#38bdf8" strokeWidth="7" strokeLinecap="round"/>
+        <line x1={hipR.x} y1={hipR.y} x2={kneR.x} y2={kneR.y} stroke="#38bdf8" strokeWidth="7" strokeLinecap="round"/>
 
-        {/* Depth hint when thigh is mostly horizontal */}
-        {showDepth && (<>
-          <line x1={hipL.x+2} y1={hipL.y-3} x2={hipL.x+dLen} y2={hipL.y-dLen}
-                stroke="#38bdf8" strokeWidth="1.2" strokeDasharray="3,2" opacity="0.55"
-                markerEnd="url(#fdepth)"/>
-          <line x1={hipR.x-2} y1={hipR.y-3} x2={hipR.x-dLen} y2={hipR.y-dLen}
-                stroke="#38bdf8" strokeWidth="1.2" strokeDasharray="3,2" opacity="0.55"
-                markerEnd="url(#fdepth)"/>
-          <text x={fCX} y={hipC.y-dLen-7} fontSize="7" fill="#38bdf8"
-                textAnchor="middle" opacity="0.65">thighs extend in +X</text>
-        </>)}
 
-        {/* ── Lower Legs ── */}
-        <line x1={kneL.x} y1={kneL.y} x2={ankL.x} y2={ankL.y}
-              stroke="#38bdf8" strokeWidth="4" strokeLinecap="round"/>
-        <line x1={kneR.x} y1={kneR.y} x2={ankR.x} y2={ankR.y}
-              stroke="#38bdf8" strokeWidth="4" strokeLinecap="round"/>
 
-        {/* ── Feet ── */}
-        <line x1={ankL.x} y1={ankL.y} x2={ftL.x} y2={ftL.y}
-              stroke="#38bdf8" strokeWidth="3" strokeLinecap="round"/>
-        <line x1={ankR.x} y1={ankR.y} x2={ftR.x} y2={ftR.y}
-              stroke="#38bdf8" strokeWidth="3" strokeLinecap="round"/>
+        {/* Shanks */}
+        <line x1={kneL.x} y1={kneL.y} x2={ankL.x} y2={ankL.y} stroke="#38bdf8" strokeWidth="4" strokeLinecap="round"/>
+        <line x1={kneR.x} y1={kneR.y} x2={ankR.x} y2={ankR.y} stroke="#38bdf8" strokeWidth="4" strokeLinecap="round"/>
 
-        {/* ── Hip joint dots (left, centre-pelvis, right) ── */}
+        {/* Feet */}
+        <line x1={ankL.x} y1={ankL.y} x2={ftL.x} y2={ftL.y} stroke="#38bdf8" strokeWidth="3" strokeLinecap="round"/>
+        <line x1={ankR.x} y1={ankR.y} x2={ftR.x} y2={ftR.y} stroke="#38bdf8" strokeWidth="3" strokeLinecap="round"/>
+
+        {/* Hip dots */}
         {[hipL, hipC, hipR].map((p,i)=>(
           <g key={"hip"+i}>
             <circle cx={p.x} cy={p.y} r={i===1?12:10} fill="rgba(0,0,0,0.35)"/>
-            <circle cx={p.x} cy={p.y} r={i===1? 8: 6} fill="#f59e0b"
-                    stroke="#0d1425" strokeWidth="1.5"/>
+            <circle cx={p.x} cy={p.y} r={i===1? 8: 6} fill="#f59e0b" stroke="#0d1425" strokeWidth="1.5"/>
           </g>
         ))}
         <text x={hipC.x+13} y={hipC.y+4} fontSize="8" fill="#f59e0b" letterSpacing="1">HIP</text>
 
-        {/* ── Knee and ankle joint dots ── */}
+        {/* Knee and ankle dots */}
         {[{p:kneL,r:6},{p:kneR,r:6},{p:ankL,r:4},{p:ankR,r:4}].map((d,i)=>(
           <g key={"jt"+i}>
             <circle cx={d.p.x} cy={d.p.y} r={d.r+2} fill="rgba(0,0,0,0.35)"/>
-            <circle cx={d.p.x} cy={d.p.y} r={d.r}   fill="#38bdf8"
-                    stroke="#0d1425" strokeWidth="1.5"/>
+            <circle cx={d.p.x} cy={d.p.y} r={d.r}   fill="#38bdf8" stroke="#0d1425" strokeWidth="1.5"/>
           </g>
         ))}
 
-        {/* ── Head ── */}
+        {/* Head */}
         <circle cx={headC.x} cy={headC.y} r={headR2+3} fill="rgba(0,0,0,0.3)"/>
-        <circle cx={headC.x} cy={headC.y} r={headR2}   fill="#0d1a2e"
-                stroke="#f59e0b" strokeWidth="5"/>
+        <circle cx={headC.x} cy={headC.y} r={headR2}   fill="#0d1a2e" stroke="#f59e0b" strokeWidth="5"/>
 
-        {/* ── Segment CoM dots ──────────────────────────────────────────────
-             (Y=±s.y, Z=s.com.z) — correct Y-Z projection of 3D CoM.
-             For the thigh: Y=±legSep, Z=thighCom.z.  When thigh is near-
-             horizontal, thighCom.z≈0 so dot appears at hip bar level on
-             each side — which IS the correct projected position.             ── */}
+        {/* Segment CoM dots — Y from per-segment lateralY, Z from sagittal kinematics */}
         {segs.flatMap((s,idx)=>{
           const ys = s.n===2 ? [-s.y, s.y] : [0];
           return ys.map((yv,j)=>{
@@ -428,46 +589,32 @@ function FrontView({ joints, segs, legSep, armSep, originZ, L, dlData, panel, se
             return (
               <g key={idx+"-"+j}>
                 <circle cx={p.x} cy={p.y} r={6}   fill="rgba(16,185,129,0.12)"/>
-                <circle cx={p.x} cy={p.y} r={2.8}  fill="rgba(16,185,129,0.95)"
-                        stroke="rgba(16,185,129,0.3)" strokeWidth="1"/>
+                <circle cx={p.x} cy={p.y} r={2.8}  fill="rgba(16,185,129,0.95)" stroke="rgba(16,185,129,0.3)" strokeWidth="1"/>
               </g>
             );
           });
         })}
 
-        {/* ── Leg width bracket ── */}
-        {(()=>{
-          const lx=hipL.x, rx=hipR.x, by=hipC.y+22;
-          return (<>
-            <line x1={lx} y1={hipC.y+4}  x2={lx} y2={by+5}  stroke="#38bdf8" strokeWidth="1" opacity="0.5"/>
-            <line x1={rx} y1={hipC.y+4}  x2={rx} y2={by+5}  stroke="#38bdf8" strokeWidth="1" opacity="0.5"/>
-            <line x1={lx} y1={by+2}       x2={rx} y2={by+2}  stroke="#38bdf8" strokeWidth="1" opacity="0.5"/>
-            <text x={(lx+rx)/2} y={by+12} fontSize="8" fill="#38bdf8" textAnchor="middle">
-              {(legSep*2*M_TO_IN).toFixed(1)}"
-            </text>
-          </>);
-        })()}
-
-        {/* ── Arm width bracket ── */}
-        {(()=>{
-          const lx=shlL.x, rx=shlR.x, ty=trk.y-20;
-          return (<>
-            <line x1={lx} y1={trk.y-4}  x2={lx} y2={ty-3}  stroke="#fb923c" strokeWidth="1" opacity="0.5"/>
-            <line x1={rx} y1={trk.y-4}  x2={rx} y2={ty-3}  stroke="#fb923c" strokeWidth="1" opacity="0.5"/>
-            <line x1={lx} y1={ty}        x2={rx} y2={ty}    stroke="#fb923c" strokeWidth="1" opacity="0.5"/>
-            <text x={(lx+rx)/2} y={ty-5} fontSize="8" fill="#fb923c" textAnchor="middle">
-              {(armSep*2*M_TO_IN).toFixed(1)}"
-            </text>
-          </>);
-        })()}
+        {/* Body CoG — at Y=0 (symmetric), Z=cog.z */}
+        {cog && (()=>{ const g=fv(0, cog.z); return (<>
+          <circle cx={g.x} cy={g.y} r={9}  fill="rgba(250,204,21,0.15)"/>
+          <circle cx={g.x} cy={g.y} r={5}  fill="#facc15" stroke="#0d1425" strokeWidth="1.5"/>
+          <line x1={g.x-11} y1={g.y} x2={g.x+11} y2={g.y} stroke="#facc15" strokeWidth="1" opacity="0.7"/>
+          <line x1={g.x}    y1={g.y-11} x2={g.x} y2={g.y+11} stroke="#facc15" strokeWidth="1" opacity="0.7"/>
+          <text x={g.x+13} y={g.y+4} fontSize="8" fill="#facc15" fontFamily="Courier New,monospace">CoG</text>
+        </>);})()}
 
         {/* Legend */}
-        <circle cx={FW-46} cy={SVG_H-14} r={3} fill="rgba(16,185,129,0.9)"/>
-        <text   x={FW-40}  y={SVG_H-10}  fontSize="8" fill="#4ade80">CoM</text>
+        <circle cx={8} cy={SVG_H-22} r={3} fill="rgba(16,185,129,0.9)"/>
+        <text x={14} y={SVG_H-18} fontSize="8" fill="#4ade80" fontFamily="Courier New,monospace">CoM</text>
+        <circle cx={50} cy={SVG_H-22} r={4} fill="#facc15"/>
+        <text x={57} y={SVG_H-18} fontSize="8" fill="#facc15" fontFamily="Courier New,monospace">CoG</text>
       </svg>
     </div>
   );
 }
+
+
 
 
 // ─── App ─────────────────────────────────────────────────────────────────────
@@ -477,15 +624,15 @@ function App() {
   const [gender,   setGender]   = useState('M');  // 'M' or 'F'
   const [showRef,  setShowRef]  = useState(false);
   const [ang, setAng] = useState({
-    trunkLean:5, thighAngle:0, kneeAngle:95,
-    shoulderAngle:25, elbowAngle:90, footAngle:-10,
+    trunkLean:25, thighAngle:17, kneeAngle:130,
+    shoulderAngle:78, elbowAngle:167, footAngle:19,
+    legSpread:0, kneeSpread:0, armAbduction:0, elbowSpread:0,
   });
   // Axis origin position in hip-centred frame [metres]
-  const [originX, setOriginX] = useState(0.00);  // + = forward from hip
-  const [originZ, setOriginZ] = useState(0.00);  // + = up from hip
-  // Lateral separation — half-width in metres (centre to limb centreline)
-  const [legSep, setLegSep] = useState(0.16);   // ~0.09×1.75m default
-  const [armSep, setArmSep] = useState(0.23);   // ~0.13×1.75m default
+  const [originX, setOriginX] = useState(0.061);  // CoG X for default pose (verified)
+  const [originY, setOriginY] = useState(0.00);
+  const [originZ, setOriginZ] = useState(0.213);  // CoG Z for default pose (verified)
+
 
   const height = heightCm / 100;
   const setAngle = (key, val) => setAng(prev => ({ ...prev, [key]: Number(val) }));
@@ -494,23 +641,23 @@ function App() {
   const { dl: dlData, du: duData } = getDatasets(gender);
 
   // De Leva dataset (used for stick figure — primary reference)
-  const { segs, joints, L } = useMemo(
-    () => computePosture(mass, height, ang, dlData, { legSep, armSep }),
-    [mass, height, ang, gender, legSep, armSep]
+  const { segs, joints, L, lateralY } = useMemo(
+    () => computePosture(mass, height, ang, dlData),
+    [mass, height, ang, gender]
   );
   const moiDL = useMemo(
-    () => computeMOI(segs, originX, originZ),
-    [segs, originX, originZ]
+    () => computeMOI(segs, originX, originY, originZ),
+    [segs, originX, originY, originZ]
   );
 
   // Dumas 2007 dataset
   const { segs: segsDumas } = useMemo(
-    () => computePosture(mass, height, ang, duData, { legSep, armSep }),
-    [mass, height, ang, gender, legSep, armSep]
+    () => computePosture(mass, height, ang, duData),
+    [mass, height, ang, gender]
   );
   const moiDumas = useMemo(
-    () => computeMOI(segsDumas, originX, originZ),
-    [segsDumas, originX, originZ]
+    () => computeMOI(segsDumas, originX, originY, originZ),
+    [segsDumas, originX, originY, originZ]
   );
 
   // Weighted average (De Leva n=100 weight=5, Dumas n=31 weight=2)
@@ -522,6 +669,19 @@ function App() {
 
   // Keep moi pointing to De Leva for breakdown table & equation panel
   const moi = moiDL;
+
+  // Body Centre of Gravity (CoG) — mass-weighted average of all segment CoMs
+  // Uses De Leva segs; bilateral segments (n=2) count double mass, Y component cancels (symmetric).
+  const cog = useMemo(() => {
+    let totalM = 0, sumX = 0, sumZ = 0;
+    for (const s of segs) {
+      const m = s.m * s.n;   // total mass for this segment (×2 for bilateral)
+      totalM += m;
+      sumX   += m * s.com.x;
+      sumZ   += m * s.com.z;
+    }
+    return totalM > 0 ? { x: sumX/totalM, z: sumZ/totalM } : { x:0, z:0 };
+  }, [segs]);
 
   // SVG layout — hip joint fixed at pixel (hipPX, hipPZ_px)
   const SVG_W=310, SVG_H=460;
@@ -553,13 +713,23 @@ function App() {
     { p:anklePos,   r:4, fill:"#38bdf8" },
   ];
 
+  // ── Pose presets ─────────────────────────────────────────────────────────
+  const PRESETS = [
+    { name:"DEFAULT",
+      ang:{ trunkLean:25, thighAngle:17, kneeAngle:130, shoulderAngle:78, elbowAngle:167, footAngle:19,
+            legSpread:0,  kneeSpread:0,  armAbduction:0,  elbowSpread:0 } },
+  ];
   const postureSliders = [
-    { key:"trunkLean",     label:"Trunk Lean",         min:-45, max:45,  hint:"+ back / - fwd"       },
-    { key:"thighAngle",    label:"Thigh Angle",        min:-30, max:90,  hint:"+ knee above hip"     },
-    { key:"kneeAngle",     label:"Knee Angle",         min:5,   max:175, hint:"interior"             },
-    { key:"shoulderAngle", label:"Shoulder Elevation", min:0,   max:180, hint:"0=down / 180=overhead"    },
-    { key:"elbowAngle",    label:"Elbow Angle",        min:0,   max:175, hint:"0=straight / 90=bent" },
-    { key:"footAngle",     label:"Foot Angle",         min:-45, max:45,  hint:"+ toes up / - down"   },
+    { key:"trunkLean",     label:"Trunk Lean",      min:-90,  max:90,  hint:"sagittal · + back"       },
+    { key:"thighAngle",    label:"Thigh Angle",     min:-45,  max:120, hint:"sagittal · + knee up"    },
+    { key:"legSpread",     label:"Leg Spread",      min:-30,  max:90,  hint:"frontal  · − = together" },
+    { key:"kneeAngle",     label:"Knee Angle",      min:0,    max:175, hint:"sagittal · interior"     },
+    { key:"kneeSpread",    label:"Knee Spread",     min:-30,  max:45,  hint:"frontal  · − = inward"   },
+    { key:"shoulderAngle", label:"Shoulder Elev.",  min:-90,  max:180, hint:"sagittal · 0=down"       },
+    { key:"armAbduction",  label:"Arm Abduction",   min:-45,  max:135, hint:"frontal  · − = inward"   },
+    { key:"elbowAngle",    label:"Elbow Angle",     min:0,    max:175, hint:"sagittal · 0=straight"   },
+    { key:"elbowSpread",   label:"Elbow Spread",    min:-30,  max:90,  hint:"frontal  · − = inward"   },
+    { key:"footAngle",     label:"Foot Angle",      min:-60,  max:60,  hint:"sagittal · + toes up"    },
   ];
 
   const panel   = { background:"#111827", borderRadius:"8px", border:"1px solid #1e2d47", padding:"16px" };
@@ -653,25 +823,42 @@ function App() {
                       fill="rgba(16,185,129,0.85)" stroke="rgba(16,185,129,0.3)" strokeWidth="1"/>
             );})}
 
+            {/* Body CoG — mass-weighted centre of gravity */}
+            {(()=>{ const g=sv(cog); return (<>
+              <circle cx={g.x} cy={g.y} r={9}  fill="rgba(250,204,21,0.15)"/>
+              <circle cx={g.x} cy={g.y} r={5}  fill="#facc15" stroke="#0d1425" strokeWidth="1.5"/>
+              <line x1={g.x-11} y1={g.y} x2={g.x+11} y2={g.y} stroke="#facc15" strokeWidth="1" opacity="0.7"/>
+              <line x1={g.x} y1={g.y-11} x2={g.x} y2={g.y+11} stroke="#facc15" strokeWidth="1" opacity="0.7"/>
+              <text x={g.x+13} y={g.y+4} fontSize="8" fill="#facc15" fontFamily="Courier New,monospace">CoG</text>
+            </>);})()}
+
             {/* Legend */}
-            <circle cx={14}  cy={SVG_H-24} r={3}  fill="rgba(16,185,129,0.85)"/>
-            <text   x={22}   y={SVG_H-20}  fontSize="8" fill="#4ade80">CoM</text>
-            <circle cx={62}  cy={SVG_H-24} r={4}  fill="#22c55e"/>
-            <text   x={71}   y={SVG_H-20}  fontSize="8" fill="#22c55e">Origin</text>
-            <circle cx={130} cy={SVG_H-24} r={4}  fill="#f59e0b"/>
-            <text   x={139}  y={SVG_H-20}  fontSize="8" fill="#94a3b8">Joint</text>
+            <circle cx={14} cy={SVG_H-22} r={3} fill="rgba(16,185,129,0.85)"/>
+            <text   x={21}  y={SVG_H-18}  fontSize="8" fill="#4ade80" fontFamily="Courier New,monospace">CoM</text>
+            <circle cx={62} cy={SVG_H-22} r={4} fill="#22c55e"/>
+            <text   x={69}  y={SVG_H-18}  fontSize="8" fill="#22c55e" fontFamily="Courier New,monospace">Origin</text>
+            <circle cx={118} cy={SVG_H-22} r={4} fill="#facc15"/>
+            <text   x={125} y={SVG_H-18}  fontSize="8" fill="#facc15" fontFamily="Courier New,monospace">CoG</text>
           </svg>
           </div>
 
           {/* FRONT VIEW (Y–Z) */}
           <FrontView
-            joints={joints} segs={segs} legSep={legSep} armSep={armSep}
+            joints={joints} segs={segs} lateralY={lateralY}
             ang={ang} originZ={originZ} L={L} dlData={dlData}
             panel={panel} secTit={secTit}
-            SCALE={SCALE} SVG_H={SVG_H}
+            SCALE={SCALE} SVG_H={SVG_H} cog={cog}
           />
 
           </div>{/* end side-by-side */}
+
+          {/* TOP VIEW (X–Y) — same width as Sagittal, X-grid aligned */}
+          <TopView
+            joints={joints} segs={segs} lateralY={lateralY}
+            originX={originX} originY={originY} L={L} dlData={dlData}
+            panel={panel} secTit={secTit} SCALE={SCALE} SVG_W={SVG_W} cog={cog}
+          />
+
         </div>{/* end SVG column */}
 
         {/* ── Right column ── */}
@@ -711,7 +898,7 @@ function App() {
                          style={{ flex:1, accentColor:"#60a5fa" }}/>
                   <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"28px", textAlign:"right" }}>396</span>
                   <span style={{ color:"#e2e8f0", fontSize:"15px", fontWeight:"600", minWidth:"62px", textAlign:"right", fontFamily:"'Courier New',monospace" }}>
-                    {Math.round(kgToLbs(mass))}<span style={{ fontSize:"10px", color:"#64748b" }}> lb</span>
+                    {kgToLbs(mass).toFixed(1)}<span style={{ fontSize:"10px", color:"#64748b" }}> lb</span>
                   </span>
                 </div>
               </div>
@@ -733,7 +920,10 @@ function App() {
             </div>
             <div style={{ marginTop:"10px", padding:"8px", background:"#0d1425", borderRadius:"4px", fontSize:"10px", color:"#64748b" }}>
               BMI: <span style={{ color:"#10b981" }}>{(mass/(height*height)).toFixed(1)}</span>
-              <span style={{ marginLeft:"16px" }}>Mass: <span style={{ color:"#10b981" }}>{mass} kg</span></span>
+              <span style={{ marginLeft:"16px" }}>Weight: <span style={{ color:"#10b981" }}>{kgToLbs(mass).toFixed(1)} lb</span></span>
+              <span style={{ marginLeft:"16px" }}>CoG: <span style={{ color:"#facc15" }}>
+                X={( cog.x * M_TO_IN).toFixed(1)}" &nbsp; Z={(cog.z * M_TO_IN).toFixed(1)}"
+              </span></span>
               <span style={{ marginLeft:"16px", color: gender==='M'?"#60a5fa":"#c084fc" }}>
                 Dataset: {gender==='M'?"De Leva male (n=100) · Dumas male (n=31)":"De Leva female (n=100) · Dumas female (n=24)"}
               </span>
@@ -742,45 +932,75 @@ function App() {
 
           {/* Axis Origin sliders */}
           <div style={{ ...panel, border:"1px solid #166534" }}>
-            <div style={{ ...secTit, color:"#22c55e" }}>Axis Origin Position</div>
-            <div style={{ fontSize:"9px", color:"#374151", marginBottom:"12px", lineHeight:"1.5" }}>
-              Slides the (0,0,0) of the coordinate frame.<br/>
-              Hip joint (greater trochanter) stays fixed in the body frame.<br/>
-              MOI computed about X, Y, Z axes through this origin.
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"12px" }}>
+              <div style={{ ...secTit, marginBottom:0 }}>Axis Origin Position</div>
+              <button onClick={()=>{ setOriginX(Math.round(cog.x*1000)/1000); setOriginY(0); setOriginZ(Math.round(cog.z*1000)/1000); }}
+                style={{ padding:"4px 10px", borderRadius:"4px", border:"1px solid #22c55e",
+                         background:"rgba(34,197,94,0.1)", color:"#22c55e", cursor:"pointer",
+                         fontFamily:"'Courier New',monospace", fontSize:"8px", letterSpacing:"1px" }}>
+                ⊕ ALIGN TO CoG
+              </button>
+            </div>
+            <div style={{ fontSize:"9px", color:"#374151", marginBottom:"10px", lineHeight:"1.5" }}>
+              Origin of X,Y,Z axes relative to hip joint. MOI computed about these axes.
             </div>
             {[
-              { label:"X origin", val:originX, set:setOriginX, hint:"+ = origin forward of hip",  color:"#22c55e" },
-              { label:"Z origin", val:originZ, set:setOriginZ, hint:"+ = origin above hip",        color:"#22c55e" },
+              { label:"X", val:originX, set:setOriginX, hint:"+ fwd", color:"#f87171" },
+              { label:"Y", val:originY, set:setOriginY, hint:"+ right", color:"#60a5fa" },
+              { label:"Z", val:originZ, set:setOriginZ, hint:"+ up",   color:"#4ade80" },
             ].map(inp=>(
-              <div key={inp.label} style={{ marginBottom:"12px" }}>
-                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"3px" }}>
-                  <span style={{ fontSize:"10px", color:"#94a3b8" }}>
-                    {inp.label}<span style={hint}>{inp.hint}</span>
+              <div key={inp.label} style={{ marginBottom:"10px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"2px" }}>
+                  <span style={{ fontSize:"10px", color:"#94a3b8", fontFamily:"'Courier New',monospace" }}>
+                    <span style={{ color:inp.color, fontWeight:"bold" }}>{inp.label}</span>
+                    <span style={hint}>{inp.hint}</span>
                   </span>
-                  <span style={{ color:"#e2e8f0", fontSize:"15px", fontWeight:"600", minWidth:"68px", textAlign:"right", fontFamily:"'Courier New',monospace" }}>
+                  <span style={{ color:"#e2e8f0", fontSize:"15px", fontWeight:"600", minWidth:"62px",
+                                 textAlign:"right", fontFamily:"'Courier New',monospace" }}>
                     {(inp.val*M_TO_IN)>=0?"+":""}{(inp.val*M_TO_IN).toFixed(1)}<span style={{ fontSize:"10px", color:"#64748b" }}> in</span>
                   </span>
                 </div>
                 <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
-                  <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"30px" }}>-20"</span>
+                  <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"24px" }}>-20"</span>
                   <input type="range" min={-0.50} max={0.50} step={0.01} value={inp.val}
                          onChange={e=>inp.set(Number(e.target.value))} style={{ flex:1, accentColor:"#60a5fa" }}/>
-                  <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"30px", textAlign:"right" }}>+20"</span>
+                  <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"24px", textAlign:"right" }}>+20"</span>
                 </div>
               </div>
             ))}
-            <div style={{ padding:"7px 10px", background:"#0a1f12", borderRadius:"4px", fontSize:"10px", color:"#64748b" }}>
-              Hip joint at &nbsp;
-              <span style={{ color:"#22c55e" }}>
-                ({(-originX*M_TO_IN).toFixed(1)}&thinsp;X, {(-originZ*M_TO_IN).toFixed(1)}&thinsp;Z) in
+            <div style={{ padding:"6px 10px", background:"#0a1f12", borderRadius:"4px", fontSize:"9px", color:"#4b5a70", display:"flex", justifyContent:"space-between" }}>
+              <span>Hip at &nbsp;
+                <span style={{ color:"#22c55e" }}>
+                  ({(-originX*M_TO_IN).toFixed(1)}", {(-originY*M_TO_IN).toFixed(1)}", {(-originZ*M_TO_IN).toFixed(1)}")
+                </span>
               </span>
-              <span style={{ color:"#374151" }}> in axis frame</span>
+              <button onClick={()=>{ setOriginX(0); setOriginY(0); setOriginZ(0); }}
+                style={{ background:"none", border:"none", color:"#374151", cursor:"pointer",
+                         fontFamily:"'Courier New',monospace", fontSize:"8px" }}>RESET</button>
             </div>
           </div>
 
           {/* Posture sliders */}
           <div style={panel}>
-            <div style={secTit}>Posture / Joint Angles</div>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"12px" }}>
+              <div style={secTit} style={{ marginBottom:0 }}>Posture / Joint Angles</div>
+            </div>
+
+            {/* Preset buttons */}
+            <div style={{ display:"flex", gap:"6px", flexWrap:"wrap", marginBottom:"14px" }}>
+              {PRESETS.map(pr=>(
+                <button key={pr.name} onClick={()=>{ setAng(pr.ang); setOriginX(0.061); setOriginY(0); setOriginZ(0.213); }} style={{
+                  padding:"5px 10px", borderRadius:"4px", border:"1px solid #1e2d47",
+                  background:"#0d1425", color:"#94a3b8", cursor:"pointer",
+                  fontFamily:"'Courier New',monospace", fontSize:"8px", letterSpacing:"1.5px",
+                  transition:"all 0.15s",
+                }}
+                onMouseEnter={e=>{ e.target.style.borderColor="#f59e0b"; e.target.style.color="#f59e0b"; }}
+                onMouseLeave={e=>{ e.target.style.borderColor="#1e2d47"; e.target.style.color="#94a3b8"; }}
+                >{pr.name}</button>
+              ))}
+            </div>
+
             {postureSliders.map(sl=>(
               <div key={sl.key} style={{ marginBottom:"10px" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"2px" }}>
@@ -800,37 +1020,6 @@ function App() {
               </div>
             ))}
 
-            {/* Lateral separation sliders — directly control roll MOI */}
-            <div style={{ marginTop:"14px", paddingTop:"10px", borderTop:"1px solid #1e2d47" }}>
-              <div style={{ fontSize:"9px", color:"#f87171", letterSpacing:"2px", marginBottom:"8px" }}>
-                LATERAL SEPARATION — ROLL MOI SENSITIVE
-              </div>
-              {[
-                { label:"Leg Separation", hint:"hip-to-hip full width", val:legSep, set:setLegSep, min:0.10, max:0.40, step:0.01, color:"#38bdf8" },
-                { label:"Arm Separation", hint:"shoulder-to-shoulder half", val:armSep, set:setArmSep, min:0.10, max:0.45, step:0.01, color:"#fb923c" },
-              ].map(sl=>(
-                <div key={sl.label} style={{ marginBottom:"10px" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"2px" }}>
-                    <span style={{ fontSize:"10px", color:"#94a3b8" }}>
-                      {sl.label}<span style={hint}>{sl.hint}</span>
-                    </span>
-                    <span style={{ color:"#e2e8f0", fontSize:"15px", fontWeight:"600", minWidth:"60px", textAlign:"right", fontFamily:"'Courier New',monospace" }}>
-                      {(sl.val*2*M_TO_IN).toFixed(1)}<span style={{ fontSize:"10px", color:"#64748b" }}> in</span>
-                    </span>
-                  </div>
-                  <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
-                    <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"28px" }}>{(sl.min*2*M_TO_IN).toFixed(0)}"</span>
-                    <input type="range" min={sl.min} max={sl.max} step={sl.step} value={sl.val}
-                           onChange={e=>sl.set(Number(e.target.value))} style={{ flex:1, accentColor:"#60a5fa" }}/>
-                    <span style={{ fontSize:"8px", color:"#4b5a70", minWidth:"28px", textAlign:"right" }}>{(sl.max*2*M_TO_IN).toFixed(0)}"</span>
-                  </div>
-                </div>
-              ))}
-              <div style={{ fontSize:"9px", color:"#374151", lineHeight:"1.6" }}>
-                Values shown as full width (2 × half-width). Measure with tape: hip-to-hip and shoulder-to-shoulder.
-                <span style={{ color:"#f87171" }}> Roll MOI scales as y²</span> — small separation errors matter.
-              </div>
-            </div>
           </div>
 
           {/* MOI Results */}
@@ -1143,7 +1332,7 @@ function App() {
                     {/* Verification */}
                     <div style={{ borderTop:"1px solid #1e2d47", paddingTop:"8px" }}>
                       <div style={{ fontSize:"9px", color:"#374151", marginBottom:"3px" }}>
-                        @ {Math.round(kgToLbs(mass))} lb · {cmToFtIn(heightCm)}:
+                        @ {kgToLbs(mass).toFixed(1)} lb · {cmToFtIn(heightCm)}:
                       </div>
                       <div style={{ ...mono, fontSize:"14px", color:ax.color, fontWeight:"bold" }}>
                         {ax.val.toFixed(3)} kg·m²
